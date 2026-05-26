@@ -47,7 +47,10 @@ async function api(svc, path, opts = {}) {
     headers: { ...(opts.headers || {}) },
     credentials: 'include',
   };
-  if (opts.body !== undefined) {
+  if (opts.formData !== undefined) {
+    init.method = opts.method || 'POST';
+    init.body = opts.formData;
+  } else if (opts.body !== undefined) {
     init.method = opts.method || 'POST';
     init.body = typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body);
     init.headers['Content-Type'] = 'application/json';
@@ -58,6 +61,8 @@ async function api(svc, path, opts = {}) {
   if (!res.ok) throw { status: res.status, data };
   return data;
 }
+
+const attachUrl = (id) => `${API.team}/attachments/${id}`;
 
 function toast(msg, ms = 2200) {
   const root = $('#toastRoot');
@@ -76,7 +81,17 @@ const state = {
   performance: {},        // {worker_id: {score, components, period}} - computed lazily
   commentsByTask: {},
   notifications: [],
+  query: '',
 };
+
+function matchesQuery(member, project) {
+  const q = state.query.trim().toLowerCase();
+  if (!q) return true;
+  return (
+    member.name.toLowerCase().includes(q) ||
+    project.name.toLowerCase().includes(q)
+  );
+}
 
 /* ── session ────────────────────────────────────────────────────── */
 async function checkSession() {
@@ -143,6 +158,11 @@ $('#signOutBtn').addEventListener('click', async () => {
   location.reload();
 });
 
+$('#searchInput')?.addEventListener('input', e => {
+  state.query = e.target.value || '';
+  render();
+});
+
 /* ── data load ─────────────────────────────────────────────────── */
 async function loadAll() {
   try {
@@ -204,6 +224,7 @@ async function loadAll() {
   populatePicker();
   await refreshPerformanceCacheLazy();
   await loadNotifications();
+  startNotificationPolling();
   render();
 }
 
@@ -232,9 +253,19 @@ async function refreshPerformanceCacheLazy() {
 async function loadNotifications() {
   if (!state.session) return;
   try {
+    const prev = (state.notifications || []).filter(n => !n.is_read).length;
     state.notifications = await api('team', `/workers/${state.session.worker_id}/notifications`);
+    const next = state.notifications.filter(n => !n.is_read).length;
     updateBell();
+    if (next > prev) toast(`+${next - prev} new notification${next - prev > 1 ? 's' : ''}`);
   } catch { /* non-critical */ }
+}
+
+// Live polling every 25s (under cache-friendly window for backend, friendly for browser).
+let _notifTimer = null;
+function startNotificationPolling() {
+  if (_notifTimer) return;
+  _notifTimer = setInterval(() => { loadNotifications(); }, 25000);
 }
 
 function updateBell() {
@@ -352,7 +383,9 @@ function renderDesktop() {
       if (m.placeholder || !project) sheet.appendChild(cellEmpty());
       else {
         const tid = state.tasks[project.id]?.[m.id];
-        sheet.appendChild(cellTask(tid, m, project));
+        const cell = cellTask(tid, m, project);
+        if (!matchesQuery(m, project)) cell.classList.add('is-dim');
+        sheet.appendChild(cell);
       }
     });
   });
@@ -534,6 +567,30 @@ async function openWidget(tid, member, project) {
           <button class="btn btn--primary" id="submitBtn">post update</button>
         </div>
 
+        ${state.session?.is_admin ? `
+        <hr class="rule" style="margin-top: var(--space-5);">
+        <div class="group" style="margin-top: var(--space-4);">
+          <label class="field" style="margin-bottom: 6px;">edit task · admin only</label>
+          <div class="row" style="gap: var(--space-3);">
+            <label class="field" style="flex: 2;">title
+              <input id="editTitleInput" type="text" value="${escapeHtml(meta.title || '')}">
+            </label>
+            <label class="field" style="flex: 1;">weight (1–10)
+              <input id="editWeightInput" type="number" min="1" max="10" value="${meta.weight || 5}">
+            </label>
+          </div>
+          <label class="field" style="margin-top: var(--space-3);">reassign to
+            <select id="editAssigneeInput">
+              ${state.workers.map(w =>
+                `<option value="${w.id}" ${w.id === meta.assignee_id ? 'selected' : ''}>${w.name} (@${w.handle})</option>`
+              ).join('')}
+            </select>
+          </label>
+          <div style="margin-top: var(--space-3); text-align: right;">
+            <button class="btn btn--ghost" id="saveTaskBtn">save changes</button>
+          </div>
+        </div>` : ''}
+
         ${state.session?.is_admin && !isSelf ? `
         <hr class="rule" style="margin-top: var(--space-5);">
         <div class="group" style="margin-top: var(--space-4);">
@@ -589,6 +646,28 @@ async function openWidget(tid, member, project) {
 
   $('#submitBtn').addEventListener('click', () => submit(tid, member, project));
 
+  const saveBtn = $('#saveTaskBtn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      const title = $('#editTitleInput').value.trim();
+      const weight = parseInt($('#editWeightInput').value, 10);
+      const assignee_id = $('#editAssigneeInput').value;
+      try {
+        const r = await api('team', `/tasks/${tid}`, {
+          method: 'PATCH',
+          body: { title, weight, assignee_id },
+        });
+        state.taskMeta[tid] = r;
+        toast('task updated');
+        await refreshTaskMeta();
+        render();
+        closeModal();
+      } catch (err) {
+        toast(`error · ${err.data?.detail || err.status}`);
+      }
+    });
+  }
+
   const recBtn = $('#recommendBtn');
   if (recBtn) {
     recBtn.addEventListener('click', async () => {
@@ -631,7 +710,25 @@ async function submit(tid, member, project) {
   const parts = [];
   if (idea) parts.push(idea);
   if (link) parts.push(`[link] ${link}`);
-  if (file) parts.push(`[file] ${file.name} · ${(file.size / 1024).toFixed(1)} KB · ${file.type || 'application/octet-stream'}`);
+
+  // Real upload — must be signed in (no anonymous file storage).
+  if (file) {
+    if (!state.session) {
+      toast('sign in to upload files');
+      return;
+    }
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('task_id', tid);
+      const att = await api('team', '/attachments', { formData: fd });
+      parts.push(`[file:${att.id}] ${file.name} · ${(file.size / 1024).toFixed(1)} KB`);
+    } catch (err) {
+      const detail = err.data?.detail || err.status;
+      toast(`upload failed · ${detail}`);
+      return;
+    }
+  }
   const body = parts.join('\n');
 
   try {
@@ -730,7 +827,10 @@ function escapeAndLinkify(s) {
   const escaped = (s || '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return escaped
-    .replace(/\[link\]\s*(https?:\/\/[^\s]+)/g, '<span class="badge">link</span> <a href="$1" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[link\]\s*(https?:\/\/[^\s]+)/g,
+      '<span class="badge">link</span> <a href="$1" target="_blank" rel="noopener">$1</a>')
+    .replace(/\[file:([a-zA-Z0-9_-]+)\]\s*(.+)/g,
+      (_, id, label) => `<span class="badge">file</span> <a href="${attachUrl(id)}" target="_blank" rel="noopener">${label}</a>`)
     .replace(/\[file\]\s*(.+)/g, '<span class="badge">file</span> $1')
     .replace(/@([a-zA-Z0-9_\-]+)/g, '<strong class="mention">@$1</strong>');
 }

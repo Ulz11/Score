@@ -239,3 +239,34 @@ CREATE TABLE IF NOT EXISTS team_notifications (
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_worker ON team_notifications(worker_id, is_read);
+
+------------------------------------------------------------
+-- team_attachments : Real file uploads (stored as BLOBs)
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS team_attachments (
+    id          TEXT PRIMARY KEY,
+    uploader_id TEXT NOT NULL REFERENCES team_workers(id),
+    task_id     TEXT REFERENCES team_tasks(id),
+    filename    TEXT NOT NULL,
+    mime        TEXT NOT NULL,
+    size_bytes  INTEGER NOT NULL,
+    data        BLOB NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_attachments_task ON team_attachments(task_id);
+
+------------------------------------------------------------
+-- team_messages : Direct messages between members
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS team_messages (
+    id          TEXT PRIMARY KEY,
+    from_id     TEXT NOT NULL REFERENCES team_workers(id),
+    to_id       TEXT NOT NULL REFERENCES team_workers(id),
+    body        TEXT NOT NULL,
+    is_read     INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_to ON team_messages(to_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_messages_thread ON team_messages(from_id, to_id);

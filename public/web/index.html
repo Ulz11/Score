@@ -119,12 +119,31 @@
   .member-head .lock { font-family: var(--font-mono); font-size: 10px; color: var(--ink-4); margin-left: 4px; }
   .member-head .placeholder-mark { font-family: var(--font-serif); font-style: italic; color: var(--ink-5); }
 
-  .cell.task-cell { cursor: pointer; }
+  .cell.task-cell { cursor: pointer; transition: opacity 0.15s; }
   .cell.task-cell:hover { background: var(--ink); color: var(--surface); }
   .cell.task-cell:hover .meta,
   .cell.task-cell:hover .bottom { color: var(--ink-5); }
   .cell.task-cell.in-self-row { background: var(--surface-3); }
   .cell.task-cell.in-self-row:hover { background: var(--ink); }
+  .cell.task-cell.is-dim { opacity: 0.18; }
+  .cell.task-cell.is-dim:hover { opacity: 1; }
+
+  /* search box */
+  .search-box {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: var(--border-strong);
+    background: var(--surface);
+  }
+  .search-box .lbl {
+    font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4);
+  }
+  .search-box input {
+    border: none; padding: 0; background: transparent;
+    font-family: var(--font-sans); font-size: var(--text-sm); font-weight: 500;
+    width: 160px; outline: none;
+  }
   .task-cell .meta {
     display: flex; justify-content: space-between;
     font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 500;
@@ -440,6 +459,11 @@
       <span class="eyebrow">Self · Sheet</span>
       <span class="grow"></span>
 
+      <label class="search-box" title="Search tasks">
+        <span class="lbl">find</span>
+        <input id="searchInput" type="search" placeholder="member or task…" autocomplete="off">
+      </label>
+
       <label class="acting" id="actingWrap" title="Acting as">
         <span class="lbl">acting as</span>
         <select id="actingPicker" aria-label="Acting as"></select>
@@ -461,8 +485,12 @@
         </div>
       </div>
 
-      <a href="container.html" class="btn btn--ghost">Container →</a>
-      <a href="admin.html" class="btn btn--ghost">Admin →</a>
+      <a href="activity.html" class="btn btn--ghost">Activity</a>
+      <a href="messages.html" class="btn btn--ghost">Messages</a>
+      <a href="money.html"    class="btn btn--ghost">Money</a>
+      <a href="reports.html"  class="btn btn--ghost">Reports</a>
+      <a href="container.html" class="btn btn--ghost">Container</a>
+      <a href="admin.html" class="btn btn--ghost">Admin</a>
     </div>
     <h1 class="h1">A team, <em>scored</em>.</h1>
     <p class="lede">

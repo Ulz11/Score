@@ -256,3 +256,82 @@ def get_transaction(tx_id: str) -> dict:
         if not row:
             raise HTTPException(404, "transaction not found")
         return dict(row)
+
+
+# ──────────────────── list endpoints (for the UI) ─────────────────
+
+
+@app.get("/meetings")
+def list_meetings() -> list[dict]:
+    with transaction() as conn:
+        rows = conn.execute(
+            "SELECT * FROM money_meetings ORDER BY scheduled_at DESC LIMIT 100"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+@app.get("/meetings/{meeting_id}")
+def get_meeting(meeting_id: str) -> dict:
+    with transaction() as conn:
+        row = conn.execute("SELECT * FROM money_meetings WHERE id=?", (meeting_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "meeting not found")
+        votes = conn.execute(
+            "SELECT * FROM money_votes WHERE meeting_id=? ORDER BY opened_at DESC",
+            (meeting_id,),
+        ).fetchall()
+        return {**dict(row), "votes": [dict(v) for v in votes]}
+
+
+@app.get("/votes")
+def list_votes(status: str | None = None) -> list[dict]:
+    with transaction() as conn:
+        if status:
+            rows = conn.execute(
+                "SELECT * FROM money_votes WHERE status=? ORDER BY opened_at DESC LIMIT 100",
+                (status,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM money_votes ORDER BY opened_at DESC LIMIT 100"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+@app.get("/votes/{vote_id}")
+def get_vote(vote_id: str) -> dict:
+    with transaction() as conn:
+        row = conn.execute("SELECT * FROM money_votes WHERE id=?", (vote_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "vote not found")
+        ballots = conn.execute(
+            """SELECT b.*, w.name AS voter_name, w.handle AS voter_handle
+               FROM money_ballots b
+               JOIN team_workers w ON w.id = b.voter_id
+               WHERE b.vote_id=? ORDER BY b.cast_at""",
+            (vote_id,),
+        ).fetchall()
+        yes = sum(1 for b in ballots if b["choice"] == "yes")
+        no = sum(1 for b in ballots if b["choice"] == "no")
+        abstain = sum(1 for b in ballots if b["choice"] == "abstain")
+        return {
+            **dict(row),
+            "ballots": [dict(b) for b in ballots],
+            "tally": {"yes": yes, "no": no, "abstain": abstain},
+        }
+
+
+@app.get("/transactions")
+def list_transactions(status: str | None = None) -> list[dict]:
+    with transaction() as conn:
+        if status:
+            rows = conn.execute(
+                """SELECT * FROM money_transactions WHERE status=?
+                   ORDER BY occurred_at DESC LIMIT 100""",
+                (status,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM money_transactions ORDER BY occurred_at DESC LIMIT 100"
+            ).fetchall()
+        return [dict(r) for r in rows]

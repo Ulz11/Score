@@ -7,8 +7,9 @@ import os
 import sqlite3
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response as FastResponse
 from pydantic import BaseModel
 
 from shared import auth, witness
@@ -608,6 +609,307 @@ def mark_notifications_read(worker_id: str, request: Request) -> dict:
 
 
 # ─────────────────────── task status history ──────────────────────
+
+
+# ───────────────────────── task editing (admin) ───────────────────
+
+
+class TaskEditIn(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    weight: int | None = None
+    assignee_id: str | None = None
+
+
+@app.patch("/tasks/{task_id}")
+def edit_task(task_id: str, body: TaskEditIn, admin: dict = Depends(require_admin)) -> dict:
+    with transaction() as conn:
+        row = conn.execute("SELECT * FROM team_tasks WHERE id=?", (task_id,)).fetchone()
+        if not row:
+            raise HTTPException(404, "task not found")
+        fields, values = [], []
+        if body.title is not None:       fields.append("title=?");       values.append(body.title)
+        if body.description is not None: fields.append("description=?"); values.append(body.description)
+        if body.weight is not None:
+            if not (1 <= body.weight <= 10):
+                raise HTTPException(400, "weight must be 1..10")
+            fields.append("weight=?"); values.append(body.weight)
+        if body.assignee_id is not None:
+            if not conn.execute("SELECT 1 FROM team_workers WHERE id=?", (body.assignee_id,)).fetchone():
+                raise HTTPException(404, "assignee not found")
+            fields.append("assignee_id=?"); values.append(body.assignee_id)
+        if not fields:
+            return dict(row)
+        values.append(task_id)
+        conn.execute(f"UPDATE team_tasks SET {', '.join(fields)} WHERE id=?", values)
+        witness.append(
+            conn,
+            actor_id=admin["worker_id"],
+            service=SERVICE,
+            action="task.edited",
+            target_type="task",
+            target_id=task_id,
+            payload=body.model_dump(exclude_unset=True),
+        )
+        # Notify new assignee if changed
+        if body.assignee_id is not None and body.assignee_id != row["assignee_id"]:
+            notif_body = f"Project leader assigned you the task '{body.title or row['title']}'"
+            conn.execute(
+                """INSERT INTO team_notifications (id, worker_id, kind, ref_id, body)
+                   VALUES (?, ?, 'task_assigned', ?, ?)""",
+                (new_id(), body.assignee_id, task_id, notif_body),
+            )
+        return _row(conn.execute("SELECT * FROM team_tasks WHERE id=?", (task_id,)).fetchone())
+
+
+# ───────────────────────── attachments (files) ────────────────────
+
+
+MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024  # 4MB cap (Vercel body limit ~4.5MB)
+
+
+@app.post("/attachments", status_code=201)
+async def upload_attachment(
+    request: Request,
+    file: UploadFile = File(...),
+    task_id: str | None = Form(None),
+) -> dict:
+    sess = require_session(request)
+    data = await file.read()
+    if len(data) > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(413, f"file too large (max {MAX_ATTACHMENT_BYTES} bytes)")
+    aid = new_id()
+    with transaction() as conn:
+        if task_id and not conn.execute("SELECT 1 FROM team_tasks WHERE id=?", (task_id,)).fetchone():
+            raise HTTPException(404, "task not found")
+        conn.execute(
+            """INSERT INTO team_attachments
+               (id, uploader_id, task_id, filename, mime, size_bytes, data)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (aid, sess["worker_id"], task_id, file.filename or "untitled",
+             file.content_type or "application/octet-stream", len(data), data),
+        )
+        witness.append(
+            conn,
+            actor_id=sess["worker_id"],
+            service=SERVICE,
+            action="attachment.uploaded",
+            target_type="task" if task_id else "worker",
+            target_id=task_id or sess["worker_id"],
+            payload={"attachment_id": aid, "filename": file.filename, "size_bytes": len(data)},
+        )
+    return {
+        "id": aid,
+        "filename": file.filename,
+        "size_bytes": len(data),
+        "mime": file.content_type or "application/octet-stream",
+    }
+
+
+@app.get("/attachments/{attachment_id}")
+def download_attachment(attachment_id: str):
+    with transaction() as conn:
+        row = conn.execute(
+            "SELECT filename, mime, data FROM team_attachments WHERE id=?",
+            (attachment_id,),
+        ).fetchone()
+        if not row:
+            raise HTTPException(404, "attachment not found")
+        safe_name = row["filename"].replace('"', "")
+        return FastResponse(
+            content=bytes(row["data"]),
+            media_type=row["mime"],
+            headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
+        )
+
+
+@app.get("/tasks/{task_id}/attachments")
+def list_task_attachments(task_id: str) -> list[dict]:
+    with transaction() as conn:
+        rows = conn.execute(
+            """SELECT a.id, a.filename, a.mime, a.size_bytes, a.created_at,
+                      a.uploader_id, w.name AS uploader_name
+               FROM team_attachments a
+               LEFT JOIN team_workers w ON w.id = a.uploader_id
+               WHERE a.task_id=? ORDER BY a.created_at DESC""",
+            (task_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ───────────────────────── direct messages ────────────────────────
+
+
+class MessageIn(BaseModel):
+    to_id: str
+    body: str
+
+
+@app.post("/messages", status_code=201)
+def send_message(body: MessageIn, request: Request) -> dict:
+    sess = require_session(request)
+    if not body.body.strip():
+        raise HTTPException(400, "message body required")
+    with transaction() as conn:
+        if not conn.execute("SELECT 1 FROM team_workers WHERE id=?", (body.to_id,)).fetchone():
+            raise HTTPException(404, "recipient not found")
+        mid = new_id()
+        conn.execute(
+            """INSERT INTO team_messages (id, from_id, to_id, body)
+               VALUES (?, ?, ?, ?)""",
+            (mid, sess["worker_id"], body.to_id, body.body),
+        )
+        # Drop a notification for the recipient
+        from_row = conn.execute(
+            "SELECT name FROM team_workers WHERE id=?", (sess["worker_id"],)
+        ).fetchone()
+        from_name = from_row["name"] if from_row else "Someone"
+        notif_body = f"{from_name} sent you a message: {body.body[:80]}"
+        conn.execute(
+            """INSERT INTO team_notifications (id, worker_id, kind, ref_id, body)
+               VALUES (?, ?, 'message', ?, ?)""",
+            (new_id(), body.to_id, mid, notif_body),
+        )
+        witness.append(
+            conn,
+            actor_id=sess["worker_id"],
+            service=SERVICE,
+            action="message.sent",
+            target_type="worker",
+            target_id=body.to_id,
+            payload={"message_id": mid},
+        )
+        return _row(conn.execute("SELECT * FROM team_messages WHERE id=?", (mid,)).fetchone())
+
+
+@app.get("/messages/inbox")
+def get_inbox(request: Request) -> list[dict]:
+    sess = require_session(request)
+    with transaction() as conn:
+        rows = conn.execute(
+            """SELECT m.*, w.name AS from_name, w.handle AS from_handle
+               FROM team_messages m
+               JOIN team_workers w ON w.id = m.from_id
+               WHERE m.to_id=? ORDER BY m.created_at DESC LIMIT 100""",
+            (sess["worker_id"],),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+@app.get("/messages/thread")
+def get_thread(with_id: str, request: Request) -> list[dict]:
+    sess = require_session(request)
+    me = sess["worker_id"]
+    with transaction() as conn:
+        rows = conn.execute(
+            """SELECT m.*, w.name AS from_name FROM team_messages m
+               JOIN team_workers w ON w.id = m.from_id
+               WHERE (m.from_id=? AND m.to_id=?) OR (m.from_id=? AND m.to_id=?)
+               ORDER BY m.created_at ASC LIMIT 200""",
+            (me, with_id, with_id, me),
+        ).fetchall()
+        # Mark inbound as read
+        conn.execute(
+            "UPDATE team_messages SET is_read=1 WHERE to_id=? AND from_id=?",
+            (me, with_id),
+        )
+        return [dict(r) for r in rows]
+
+
+# ───────────────────────── activity feed ──────────────────────────
+
+
+@app.get("/activity")
+def activity_feed(limit: int = 100, service_filter: str | None = None) -> list[dict]:
+    with transaction() as conn:
+        if service_filter:
+            rows = conn.execute(
+                """SELECT w.id AS log_id, w.ts, w.actor_id, w.service, w.action,
+                          w.target_type, w.target_id, w.payload_json,
+                          tw.name AS actor_name, tw.handle AS actor_handle
+                   FROM judge_witness_log w
+                   LEFT JOIN team_workers tw ON tw.id = w.actor_id
+                   WHERE w.service = ?
+                   ORDER BY w.ts DESC LIMIT ?""",
+                (service_filter, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """SELECT w.id AS log_id, w.ts, w.actor_id, w.service, w.action,
+                          w.target_type, w.target_id, w.payload_json,
+                          tw.name AS actor_name, tw.handle AS actor_handle
+                   FROM judge_witness_log w
+                   LEFT JOIN team_workers tw ON tw.id = w.actor_id
+                   ORDER BY w.ts DESC LIMIT ?""",
+                (limit,),
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["payload"] = json.loads(d.pop("payload_json"))
+            except Exception:
+                d["payload"] = {}
+            result.append(d)
+        return result
+
+
+# ───────────────────────── reports ────────────────────────────────
+
+
+@app.get("/reports/team")
+def team_report(period: str | None = None) -> dict:
+    """Return per-worker performance + KPI summary + task counts."""
+    if period is None:
+        period = datetime.now(timezone.utc).strftime("%Y-%m")
+    with transaction() as conn:
+        workers = conn.execute(
+            "SELECT id, name, handle, is_admin FROM team_workers ORDER BY name"
+        ).fetchall()
+        rows = []
+        for w in workers:
+            wid = w["id"]
+            tasks = conn.execute(
+                """SELECT status, COUNT(*) AS n FROM team_tasks
+                   WHERE assignee_id=? GROUP BY status""",
+                (wid,),
+            ).fetchall()
+            by_status = {r["status"]: r["n"] for r in tasks}
+            total_w = conn.execute(
+                "SELECT COALESCE(SUM(weight),0) AS w FROM team_tasks WHERE assignee_id=?",
+                (wid,),
+            ).fetchone()
+            done_w = conn.execute(
+                "SELECT COALESCE(SUM(weight),0) AS w FROM team_tasks WHERE assignee_id=? AND status='done'",
+                (wid,),
+            ).fetchone()
+            kpis = conn.execute(
+                """SELECT AVG(score) AS avg_s, COUNT(*) AS n FROM team_kpis
+                   WHERE scope='worker' AND scope_id=? AND period=?""",
+                (wid, period),
+            ).fetchone()
+            peer = conn.execute(
+                """SELECT AVG(ps.score) AS avg_p, COUNT(*) AS n
+                   FROM netdef_peer_scores ps
+                   JOIN team_tasks t ON t.id = ps.target_task_id
+                   WHERE t.assignee_id=?""",
+                (wid,),
+            ).fetchone()
+            weighted = (done_w["w"] / total_w["w"] * 100.0) if total_w["w"] else 0.0
+            kpi_avg = kpis["avg_s"] or 0.0
+            peer_avg = peer["avg_p"] or 0.0
+            final = 0.5 * weighted + 0.3 * kpi_avg + 0.2 * peer_avg
+            rows.append({
+                "id": wid, "name": w["name"], "handle": w["handle"],
+                "is_admin": bool(w["is_admin"]),
+                "tasks_by_status": by_status,
+                "total_weight": total_w["w"], "done_weight": done_w["w"],
+                "weighted_tasks": round(weighted, 1),
+                "kpi_avg": round(kpi_avg, 1), "kpi_count": kpis["n"],
+                "peer_avg": round(peer_avg, 1), "peer_count": peer["n"],
+                "score": round(final, 1),
+            })
+        return {"period": period, "workers": rows}
 
 
 @app.get("/tasks/{task_id}/history")
