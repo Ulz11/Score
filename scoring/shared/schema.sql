@@ -212,3 +212,30 @@ CREATE INDEX IF NOT EXISTS idx_witness_service_action ON judge_witness_log(servi
 CREATE INDEX IF NOT EXISTS idx_peer_scorer_target    ON netdef_peer_scores(scorer_id, target_task_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee        ON team_tasks(assignee_id);
 CREATE INDEX IF NOT EXISTS idx_ballots_vote          ON money_ballots(vote_id);
+
+------------------------------------------------------------
+-- team_recommendations : Admin recommends tasks to members
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS team_recommendations (
+    id          TEXT PRIMARY KEY,
+    from_id     TEXT NOT NULL REFERENCES team_workers(id),
+    to_id       TEXT NOT NULL REFERENCES team_workers(id),
+    task_id     TEXT REFERENCES team_tasks(id),
+    body        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+------------------------------------------------------------
+-- team_notifications : In-app notifications for members
+------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS team_notifications (
+    id          TEXT PRIMARY KEY,
+    worker_id   TEXT NOT NULL REFERENCES team_workers(id) ON DELETE CASCADE,
+    kind        TEXT NOT NULL,
+    ref_id      TEXT,
+    body        TEXT NOT NULL,
+    is_read     INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_notifications_worker ON team_notifications(worker_id, is_read);

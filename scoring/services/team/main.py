@@ -392,11 +392,28 @@ def update_task_status(task_id: str, body: TaskStatusIn, request: Request) -> di
             target_id=task_id,
             payload={"from": row["status"], "to": body.status},
         )
+        # Notify the assignee when someone else changes their task status
+        if assignee and actor_id and actor_id != assignee:
+            from_row = conn.execute(
+                "SELECT name FROM team_workers WHERE id=?", (actor_id,)
+            ).fetchone()
+            from_name = from_row["name"] if from_row else "Someone"
+            notif_body = (
+                f"{from_name} changed your task "
+                f"'{row['title']}' to {body.status.replace('_', ' ')}"
+            )
+            conn.execute(
+                """INSERT INTO team_notifications (id, worker_id, kind, ref_id, body)
+                   VALUES (?, ?, 'status_change', ?, ?)""",
+                (new_id(), assignee, task_id, notif_body),
+            )
         return _row(conn.execute("SELECT * FROM team_tasks WHERE id=?", (task_id,)).fetchone())
 
 
 @app.post("/kpis", status_code=201)
-def record_kpi(body: KpiIn, admin: dict = Depends(require_admin)) -> dict:
+def record_kpi(body: KpiIn, request: Request) -> dict:
+    sess = require_session(request)
+    actor_id = body.actor_id or sess["worker_id"]
     with transaction() as conn:
         ratio = (body.value / body.target) if body.target else 0.0
         score = max(0.0, min(2.0, ratio)) * 50.0
@@ -408,7 +425,7 @@ def record_kpi(body: KpiIn, admin: dict = Depends(require_admin)) -> dict:
         )
         witness.append(
             conn,
-            actor_id=body.actor_id,
+            actor_id=actor_id,
             service=SERVICE,
             action="kpi.recorded",
             target_type=body.scope,
@@ -478,3 +495,144 @@ def compute_performance(worker_id: str, period: str) -> dict:
         )
         return {"worker_id": worker_id, "period": period,
                 "score": round(final, 2), "components": components}
+
+
+# ──────────────────────── recommendations ─────────────────────────
+
+
+class RecommendIn(BaseModel):
+    to_id: str
+    task_id: str | None = None
+    body: str
+
+
+@app.post("/recommendations", status_code=201)
+def create_recommendation(body: RecommendIn, admin: dict = Depends(require_admin)) -> dict:
+    from_id = admin["worker_id"]
+    with transaction() as conn:
+        if not conn.execute("SELECT 1 FROM team_workers WHERE id=?", (body.to_id,)).fetchone():
+            raise HTTPException(404, "recipient not found")
+        rid = new_id()
+        conn.execute(
+            """INSERT INTO team_recommendations (id, from_id, to_id, task_id, body)
+               VALUES (?, ?, ?, ?, ?)""",
+            (rid, from_id, body.to_id, body.task_id, body.body),
+        )
+        from_row = conn.execute(
+            "SELECT name FROM team_workers WHERE id=?", (from_id,)
+        ).fetchone()
+        from_name = from_row["name"] if from_row else "Admin"
+        notif_body = f"{from_name} recommended: {body.body[:120]}"
+        conn.execute(
+            """INSERT INTO team_notifications (id, worker_id, kind, ref_id, body)
+               VALUES (?, ?, 'recommendation', ?, ?)""",
+            (new_id(), body.to_id, rid, notif_body),
+        )
+        witness.append(
+            conn,
+            actor_id=from_id,
+            service=SERVICE,
+            action="recommendation.created",
+            target_type="worker",
+            target_id=body.to_id,
+            payload={"to_id": body.to_id, "task_id": body.task_id, "body": body.body},
+        )
+        return _row(conn.execute(
+            "SELECT * FROM team_recommendations WHERE id=?", (rid,)
+        ).fetchone())
+
+
+@app.get("/tasks/{task_id}/recommendations")
+def get_task_recommendations(task_id: str) -> list[dict]:
+    with transaction() as conn:
+        rows = conn.execute(
+            """SELECT r.*, w.name AS from_name, w2.name AS to_name
+               FROM team_recommendations r
+               JOIN team_workers w  ON w.id  = r.from_id
+               JOIN team_workers w2 ON w2.id = r.to_id
+               WHERE r.task_id=? ORDER BY r.created_at DESC""",
+            (task_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+@app.get("/workers/{worker_id}/recommendations")
+def get_worker_recommendations(worker_id: str, request: Request) -> list[dict]:
+    sess = current_session(request)
+    if not sess:
+        raise HTTPException(401, "sign in required")
+    if sess["worker_id"] != worker_id and not sess.get("is_admin"):
+        raise HTTPException(403, "forbidden")
+    with transaction() as conn:
+        rows = conn.execute(
+            """SELECT r.*, w.name AS from_name FROM team_recommendations r
+               JOIN team_workers w ON w.id = r.from_id
+               WHERE r.to_id=? ORDER BY r.created_at DESC""",
+            (worker_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ──────────────────────── notifications ───────────────────────────
+
+
+@app.get("/workers/{worker_id}/notifications")
+def get_notifications(worker_id: str, request: Request) -> list[dict]:
+    sess = current_session(request)
+    if not sess:
+        raise HTTPException(401, "sign in required")
+    if sess["worker_id"] != worker_id and not sess.get("is_admin"):
+        raise HTTPException(403, "forbidden")
+    with transaction() as conn:
+        rows = conn.execute(
+            """SELECT * FROM team_notifications WHERE worker_id=?
+               ORDER BY created_at DESC LIMIT 50""",
+            (worker_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+@app.post("/workers/{worker_id}/notifications/read-all")
+def mark_notifications_read(worker_id: str, request: Request) -> dict:
+    sess = current_session(request)
+    if not sess:
+        raise HTTPException(401, "sign in required")
+    if sess["worker_id"] != worker_id and not sess.get("is_admin"):
+        raise HTTPException(403, "forbidden")
+    with transaction() as conn:
+        conn.execute(
+            "UPDATE team_notifications SET is_read=1 WHERE worker_id=?",
+            (worker_id,),
+        )
+        return {"ok": True}
+
+
+# ─────────────────────── task status history ──────────────────────
+
+
+@app.get("/tasks/{task_id}/history")
+def get_task_history(task_id: str) -> list[dict]:
+    with transaction() as conn:
+        rows = conn.execute(
+            """SELECT ts, actor_id, action, payload_json
+               FROM judge_witness_log
+               WHERE target_id=? AND action='task.status_changed'
+               ORDER BY ts DESC LIMIT 50""",
+            (task_id,),
+        ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["payload"] = json.loads(d.pop("payload_json"))
+            except Exception:
+                d["payload"] = {}
+            actor = (
+                conn.execute(
+                    "SELECT name, handle FROM team_workers WHERE id=?", (d["actor_id"],)
+                ).fetchone()
+                if d.get("actor_id") else None
+            )
+            d["actor_name"] = actor["name"] if actor else "system"
+            result.append(d)
+        return result

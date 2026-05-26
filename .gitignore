@@ -31,3 +31,5 @@ scoring/scoring.db-shm
 # OS
 .DS_Store
 Thumbs.db
+
+.vercel

@@ -75,6 +75,7 @@ const state = {
   taskMeta: {},
   performance: {},        // {worker_id: {score, components, period}} - computed lazily
   commentsByTask: {},
+  notifications: [],
 };
 
 /* ── session ────────────────────────────────────────────────────── */
@@ -202,6 +203,7 @@ async function loadAll() {
   populateIdentityUI();
   populatePicker();
   await refreshPerformanceCacheLazy();
+  await loadNotifications();
   render();
 }
 
@@ -225,6 +227,67 @@ async function refreshPerformanceCacheLazy() {
   const rs = (await Promise.all(promises)).filter(Boolean);
   for (const [wid, r] of rs) state.performance[wid] = r;
 }
+
+/* ── notifications ─────────────────────────────────────────────── */
+async function loadNotifications() {
+  if (!state.session) return;
+  try {
+    state.notifications = await api('team', `/workers/${state.session.worker_id}/notifications`);
+    updateBell();
+  } catch { /* non-critical */ }
+}
+
+function updateBell() {
+  const wrap = $('#bellWrap');
+  const badge = $('#bellCount');
+  if (!wrap) return;
+  if (!state.session) { wrap.classList.add('hidden'); return; }
+  wrap.classList.remove('hidden');
+  const unread = state.notifications.filter(n => !n.is_read).length;
+  badge.textContent = unread > 99 ? '99+' : String(unread);
+  badge.classList.toggle('hidden', unread === 0);
+}
+
+function renderNotifications() {
+  const el = $('#notifItems');
+  if (!el) return;
+  if (!state.notifications.length) {
+    el.innerHTML = `<div class="notif-empty">no notifications yet</div>`;
+    return;
+  }
+  el.innerHTML = state.notifications.map(n => `
+    <div class="notif-item${n.is_read ? '' : ' is-unread'}">
+      <div class="nkind">${(n.kind || '').replace(/_/g, ' ')}</div>
+      <div class="nbody">${escapeHtml(n.body)}</div>
+      <div class="ntime">${(n.created_at || '').replace('T', ' ').slice(0, 16)}</div>
+    </div>`).join('');
+}
+
+function escapeHtml(s) {
+  return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+$('#bellBtn')?.addEventListener('click', async e => {
+  e.stopPropagation();
+  const panel = $('#notifPanel');
+  panel.classList.toggle('hidden');
+  if (!panel.classList.contains('hidden')) {
+    renderNotifications();
+    if (state.session) {
+      try {
+        await api('team', `/workers/${state.session.worker_id}/notifications/read-all`, { method: 'POST' });
+        state.notifications.forEach(n => { n.is_read = 1; });
+        updateBell();
+      } catch { /* ignore */ }
+    }
+  }
+});
+
+document.addEventListener('click', e => {
+  const panel = $('#notifPanel');
+  const wrap = $('#bellWrap');
+  if (panel && wrap && !wrap.contains(e.target)) panel.classList.add('hidden');
+});
 
 /* ── identity / picker ─────────────────────────────────────────── */
 function populateIdentityUI() {
@@ -471,6 +534,16 @@ async function openWidget(tid, member, project) {
           <button class="btn btn--primary" id="submitBtn">post update</button>
         </div>
 
+        ${state.session?.is_admin && !isSelf ? `
+        <hr class="rule" style="margin-top: var(--space-5);">
+        <div class="group" style="margin-top: var(--space-4);">
+          <label class="field" style="margin-bottom: 6px;">recommend · project leader</label>
+          <textarea id="recommendInput" rows="3" placeholder="Write a recommendation for ${member.name}…"></textarea>
+          <div style="margin-top: var(--space-2); text-align: right;">
+            <button class="btn btn--primary" id="recommendBtn">send recommendation</button>
+          </div>
+        </div>` : ''}
+
         <hr class="rule mt-6">
         <div class="section-head" style="margin-top: var(--space-4);">
           History <span class="counter" id="histCount">—</span>
@@ -515,6 +588,26 @@ async function openWidget(tid, member, project) {
   });
 
   $('#submitBtn').addEventListener('click', () => submit(tid, member, project));
+
+  const recBtn = $('#recommendBtn');
+  if (recBtn) {
+    recBtn.addEventListener('click', async () => {
+      const body = $('#recommendInput').value.trim();
+      if (!body) { toast('write a recommendation first'); return; }
+      try {
+        await api('team', '/recommendations', {
+          body: { to_id: member.id, task_id: tid, body },
+        });
+        toast(`recommendation sent to ${member.name}`);
+        $('#recommendInput').value = '';
+        await loadHistory(tid);
+        await loadNotifications();
+      } catch (err) {
+        const detail = err.data?.detail || err.status;
+        toast(`error · ${detail}`);
+      }
+    });
+  }
 
   await loadHistory(tid);
 }
@@ -573,14 +666,18 @@ async function submit(tid, member, project) {
 async function loadHistory(tid) {
   const histEl = $('#history');
   try {
-    const [comments, peerScores] = await Promise.all([
+    const [comments, peerScores, statusHistory, recommendations] = await Promise.all([
       api('netdef', `/comments?target_type=task&target_id=${tid}`),
       api('netdef', `/tasks/${tid}/peer-scores`),
+      api('team', `/tasks/${tid}/history`).catch(() => []),
+      api('team', `/tasks/${tid}/recommendations`).catch(() => []),
     ]);
     state.commentsByTask[tid] = comments;
     const items = [
-      ...comments.map(c => ({ kind: 'comment', ts: c.created_at, data: c })),
-      ...peerScores.map(p => ({ kind: 'score',   ts: p.created_at, data: p })),
+      ...comments.map(c =>       ({ kind: 'comment',        ts: c.created_at, data: c })),
+      ...peerScores.map(p =>     ({ kind: 'score',           ts: p.created_at, data: p })),
+      ...statusHistory.map(h =>  ({ kind: 'status',          ts: h.ts,         data: h })),
+      ...recommendations.map(r =>({ kind: 'recommendation',  ts: r.created_at, data: r })),
     ].sort((a, b) => (a.ts < b.ts ? 1 : -1));
     $('#histCount').textContent = String(items.length).padStart(3, '0');
 
@@ -604,14 +701,29 @@ function renderHistoryItem(item) {
       <div class="meta"><span><span class="badge">comment</span><strong>${author}</strong> ${handle}</span><span>${ts}</span></div>
       <div class="body">${escapeAndLinkify(c.body)}</div>
     </div>`;
-  } else {
+  } else if (item.kind === 'score') {
     const s = item.data;
     const scorer = state.workers.find(w => w.id === s.scorer_id);
     return `<div class="history-item">
       <div class="meta"><span><span class="badge">peer score</span><strong>${scorer?.name || '#' + (s.scorer_id||'').slice(0,8)}</strong> · ${s.score}/100${s.was_unfinished ? ' · unfinished' : ''}</span><span>${ts}</span></div>
       ${s.notes ? `<div class="body">${escapeAndLinkify(s.notes)}</div>` : ''}
     </div>`;
+  } else if (item.kind === 'status') {
+    const h = item.data;
+    const from = (h.payload?.from || '?').replace(/_/g, ' ');
+    const to   = (h.payload?.to   || '?').replace(/_/g, ' ');
+    return `<div class="history-item">
+      <div class="meta"><span><span class="badge">status</span><strong>${h.actor_name}</strong></span><span>${ts}</span></div>
+      <div class="body">${from} → ${to}</div>
+    </div>`;
+  } else if (item.kind === 'recommendation') {
+    const r = item.data;
+    return `<div class="history-item">
+      <div class="meta"><span><span class="badge">recommend</span><strong>${r.from_name}</strong> → ${r.to_name}</span><span>${ts}</span></div>
+      <div class="body">${escapeAndLinkify(r.body)}</div>
+    </div>`;
   }
+  return '';
 }
 
 function escapeAndLinkify(s) {

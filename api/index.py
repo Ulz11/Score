@@ -17,20 +17,33 @@ os.environ.setdefault("CORS_ORIGIN", "*")
 from shared.bootstrap import init as _init
 _init(seed=True, iveel=True)
 
-# Ensure an admin account exists (Vercel DB is ephemeral; re-created on cold start)
+# Ensure Obama (project leader) exists as admin on every cold start.
+# If the bootstrap already created an Obama worker, just promote it.
 def _ensure_admin() -> None:
     from shared import auth
     from shared.db import new_id, transaction
     pw = os.environ.get("ADMIN_PASSWORD", "admin1234")
     with transaction() as conn:
+        # Already have an Obama admin — nothing to do.
         row = conn.execute(
-            "SELECT id FROM team_workers WHERE handle='admin' AND is_admin=1"
+            "SELECT id FROM team_workers WHERE handle='obama' AND is_admin=1"
         ).fetchone()
         if row:
             return
+        # Obama worker exists but not yet admin (e.g. created by bootstrap) — promote.
+        existing = conn.execute(
+            "SELECT id FROM team_workers WHERE name='Obama' OR handle='obama'"
+        ).fetchone()
+        if existing:
+            conn.execute(
+                "UPDATE team_workers SET is_admin=1, password_hash=?, handle='obama' WHERE id=?",
+                (auth.hash_password(pw), existing["id"]),
+            )
+            return
+        # Fresh DB — create Obama as admin.
         conn.execute(
             """INSERT INTO team_workers (id, name, type, handle, password_hash, is_admin)
-               VALUES (?, 'Admin', 'human', 'admin', ?, 1)""",
+               VALUES (?, 'Obama', 'human', 'obama', ?, 1)""",
             (new_id(), auth.hash_password(pw)),
         )
 

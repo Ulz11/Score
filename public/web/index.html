@@ -366,6 +366,50 @@
   .acting[disabled], .acting.is-disabled {
     background: var(--surface-2); color: var(--ink-4);
   }
+
+  /* notification bell */
+  .bell-wrap { position: relative; }
+  .bell-badge {
+    position: absolute; top: -5px; right: -5px;
+    min-width: 16px; height: 16px; padding: 0 3px;
+    background: var(--ink); color: var(--surface);
+    border-radius: 99px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .notif-panel {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+    width: min(340px, 90vw);
+    background: var(--surface); border: var(--border-ink);
+    max-height: 420px; overflow-y: auto;
+  }
+  .notif-panel .notif-head {
+    padding: var(--space-2) var(--space-4);
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--ink-4); border-bottom: var(--border);
+  }
+  .notif-item {
+    padding: var(--space-3) var(--space-4);
+    border-bottom: var(--border);
+  }
+  .notif-item.is-unread { background: var(--surface-2); }
+  .notif-item .nkind {
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-4); margin-bottom: 3px;
+  }
+  .notif-item .nbody { font-size: var(--text-sm); line-height: 1.4; }
+  .notif-item .ntime {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--ink-5); margin-top: 3px;
+  }
+  .notif-empty {
+    padding: var(--space-5) var(--space-4);
+    font-family: var(--font-serif); font-style: italic;
+    color: var(--ink-5); text-align: center;
+  }
 </style>
 </head>
 <body>
@@ -406,6 +450,15 @@
         <button id="signOutBtn" class="btn btn--ghost" style="padding: 2px 8px; font-size: 11px;">sign out</button>
       </span>
       <button id="signInBtn" class="btn btn--ghost hidden">sign in</button>
+
+      <div class="bell-wrap hidden" id="bellWrap">
+        <button class="btn btn--ghost" id="bellBtn" title="Notifications" aria-label="Notifications">🔔</button>
+        <span class="bell-badge hidden" id="bellCount">0</span>
+        <div class="notif-panel hidden" id="notifPanel">
+          <div class="notif-head">Notifications</div>
+          <div id="notifItems"></div>
+        </div>
+      </div>
 
       <a href="container.html" class="btn btn--ghost">Container →</a>
       <a href="admin.html" class="btn btn--ghost">Admin →</a>
