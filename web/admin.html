@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SCORING — Startup Control Plane</title>
+
+<link rel="stylesheet" href="../global.css">
+
+<style>
+  /* Minimal local additions: form controls + tables.
+     global.css is the editorial system; these only fill the gaps. */
+  input[type="text"], input[type="number"], input[type="datetime-local"],
+  select, textarea {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    color: var(--ink);
+    background: var(--surface);
+    border: var(--border-strong);
+    border-radius: var(--radius-0);
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--ink);
+  }
+  textarea { min-height: 4.5rem; resize: vertical; font-family: var(--font-mono); }
+  label.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+  th, td {
+    padding: 0.5rem 0.6rem;
+    text-align: left;
+    border-bottom: var(--border);
+    vertical-align: top;
+  }
+  th {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    font-weight: 500;
+    border-bottom: var(--border-strong);
+  }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+  .form-grid > .full { grid-column: 1 / -1; }
+  details > summary {
+    cursor: pointer;
+    padding: var(--space-2) 0;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    letter-spacing: 0.04em;
+    color: var(--ink-2);
+    list-style: none;
+  }
+  details > summary::before { content: "+ "; color: var(--ink-4); }
+  details[open] > summary::before { content: "− "; }
+  .scroll-x { overflow-x: auto; }
+  .feed-row {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 6px;
+    padding: 4px 0;
+    border-bottom: 1px dashed var(--rule);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+  }
+  .feed-row:last-child { border-bottom: none; }
+  .feed-row .idx { color: var(--ink-5); }
+  .feed-row .act { color: var(--ink); }
+  .feed-row .meta { color: var(--ink-4); }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+
+  <!-- ─────────────────────────── HEADER ─────────────────────────── -->
+  <header class="area-head block-head stack">
+    <div class="cluster" style="justify-content:space-between; width:100%;">
+      <span class="eyebrow">A Palantir-inspired control plane</span>
+      <a href="./" class="btn btn--ghost">← Self sheet</a>
+    </div>
+    <h1 class="h1">A startup, <em>watched</em>.</h1>
+    <p class="lede">
+      Four services, one database, one append-only witness chain.
+      Score people, score people scoring people, vote on money,
+      and let the Judge ask whether any of it was honest.
+    </p>
+
+    <nav class="choice-grid" style="grid-template-columns: repeat(4, 1fr); max-width: 640px;">
+      <button data-tab="team"   class="is-active">TEAM</button>
+      <button data-tab="netdef">NET DEF</button>
+      <button data-tab="money">MONEY</button>
+      <button data-tab="judge">JUDGE</button>
+    </nav>
+  </header>
+
+  <!-- ─────────────────────────── MAIN ─────────────────────────── -->
+  <main class="area-main stack--lg">
+
+    <!-- ═══════════════════════ TEAM ═══════════════════════ -->
+    <section data-section="team" class="stack--lg">
+
+      <div class="section-head">Workers <span class="counter" id="workersCounter">—</span></div>
+      <div class="scroll-x"><table id="workersTable">
+        <thead><tr><th>id</th><th>handle</th><th>name</th><th>type</th><th>salary</th><th>active</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+
+      <details>
+        <summary>+ add worker</summary>
+        <form id="workerForm" class="form-grid surface mt-2">
+          <label class="field">name<input name="name" type="text" required></label>
+          <label class="field">handle<input name="handle" type="text" required></label>
+          <label class="field">type
+            <select name="type"><option value="human">human</option><option value="agent">agent</option></select>
+          </label>
+          <label class="field">base salary<input name="base_salary" type="number" step="0.01" value="0"></label>
+          <label class="field">currency<input name="salary_currency" type="text" value="USD"></label>
+          <label class="field">actor id (optional)<input name="actor_id" type="text"></label>
+          <div class="full"><button class="btn btn--primary full" type="submit">create worker</button></div>
+        </form>
+      </details>
+
+      <hr class="rule">
+
+      <div class="section-head">Projects <span class="counter" id="projectsCounter">—</span></div>
+      <div class="scroll-x"><table id="projectsTable">
+        <thead><tr><th>id</th><th>name</th><th>status</th><th>started</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+
+      <details>
+        <summary>+ add project</summary>
+        <form id="projectForm" class="form-grid surface mt-2">
+          <label class="field">name<input name="name" type="text" required></label>
+          <label class="field">actor id<input name="actor_id" type="text"></label>
+          <label class="field full">description<textarea name="description"></textarea></label>
+          <div class="full"><button class="btn btn--primary full" type="submit">create project</button></div>
+        </form>
+      </details>
+
+      <hr class="rule">
+
+      <div class="section-head">Tasks <span class="counter" id="tasksCounter">—</span></div>
+      <div class="cluster">
+        <label class="field" style="min-width:220px;">filter by project
+          <select id="taskProjectFilter"><option value="">— all —</option></select>
+        </label>
+        <button class="btn btn--ghost" id="refreshTasks">refresh</button>
+      </div>
+      <div class="scroll-x"><table id="tasksTable">
+        <thead><tr><th>id</th><th>project</th><th>title</th><th>weight</th><th>assignee</th><th>status</th><th>actions</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+
+      <details>
+        <summary>+ add task</summary>
+        <form id="taskForm" class="form-grid surface mt-2">
+          <label class="field">project<select name="project_id" required id="taskFormProject"></select></label>
+          <label class="field">title<input name="title" type="text" required></label>
+          <label class="field">weight (1–10)<input name="weight" type="number" min="1" max="10" value="5" required></label>
+          <label class="field">assignee<select name="assignee_id" id="taskFormAssignee"><option value="">— unassigned —</option></select></label>
+          <label class="field">created_by<select name="created_by" id="taskFormCreator"><option value="">— none —</option></select></label>
+          <label class="field">actor id<input name="actor_id" type="text"></label>
+          <label class="field full">description<textarea name="description"></textarea></label>
+          <div class="full"><button class="btn btn--primary full" type="submit">create task</button></div>
+        </form>
+      </details>
+
+      <hr class="rule">
+
+      <div class="section-head">KPI &amp; Performance</div>
+      <div class="grid-2">
+        <form id="kpiForm" class="form-grid surface">
+          <div class="full"><span class="eyebrow">record kpi</span></div>
+          <label class="field">scope
+            <select name="scope"><option>worker</option><option>team</option><option>project</option></select>
+          </label>
+          <label class="field">scope id<input name="scope_id" type="text" required></label>
+          <label class="field">period (e.g. 2026-05)<input name="period" type="text" required></label>
+          <label class="field">metric<input name="metric" type="text" required></label>
+          <label class="field">value<input name="value" type="number" step="0.01" required></label>
+          <label class="field">target<input name="target" type="number" step="0.01" required></label>
+          <div class="full"><button class="btn btn--primary full" type="submit">record kpi</button></div>
+        </form>
+
+        <form id="perfForm" class="form-grid surface">
+          <div class="full"><span class="eyebrow">compute performance</span></div>
+          <label class="field">worker<select name="worker_id" id="perfWorker" required></select></label>
+          <label class="field">period<input name="period" type="text" placeholder="2026-05" required></label>
+          <div class="full"><button class="btn full" type="submit">compute</button></div>
+        </form>
+      </div>
+      <div class="code-box" id="teamOut"><span class="empty">team service output appears here.</span></div>
+    </section>
+
+    <!-- ═══════════════════════ NETDEF ═══════════════════════ -->
+    <section data-section="netdef" hidden class="stack--lg">
+
+      <div class="section-head">Peer scoring</div>
+      <p class="lede">Score any task — done or not. Unfinished work counts too.</p>
+      <form id="peerForm" class="form-grid surface">
+        <label class="field">scorer<select name="scorer_id" id="peerScorer" required></select></label>
+        <label class="field">target task<select name="target_task_id" id="peerTask" required></select></label>
+        <label class="field">score (0–100)<input name="score" type="number" min="0" max="100" value="70" required></label>
+        <label class="field">notes<input name="notes" type="text"></label>
+        <div class="full"><button class="btn btn--primary full" type="submit">submit peer score</button></div>
+      </form>
+
+      <hr class="rule">
+
+      <div class="section-head">Comments &amp; @mentions</div>
+      <form id="commentForm" class="form-grid surface">
+        <label class="field">author<select name="author_id" id="commentAuthor" required></select></label>
+        <label class="field">target type
+          <select name="target_type">
+            <option>task</option><option>worker</option>
+            <option>transaction</option><option>meeting</option>
+          </select>
+        </label>
+        <label class="field">target id<input name="target_id" type="text" required></label>
+        <label class="field full">body (use <span class="mono">@handle</span> to mention)
+          <textarea name="body" required placeholder="Nice work @ada — but @grace flagged the weight"></textarea>
+        </label>
+        <div class="full"><button class="btn btn--primary full" type="submit">post comment</button></div>
+      </form>
+
+      <hr class="rule">
+
+      <div class="section-head">Inbox</div>
+      <form id="inboxForm" class="cluster surface">
+        <label class="field" style="min-width:200px;">worker<select name="worker_id" id="inboxWorker" required></select></label>
+        <button class="btn" type="submit">load inbox</button>
+      </form>
+
+      <div class="section-head">Task peer scores</div>
+      <form id="taskScoresForm" class="cluster surface">
+        <label class="field" style="min-width:240px;">task<select name="task_id" id="taskScoresTask" required></select></label>
+        <button class="btn" type="submit">load scores</button>
+      </form>
+
+      <div class="code-box" id="netdefOut"><span class="empty">netdef service output appears here.</span></div>
+    </section>
+
+    <!-- ═══════════════════════ MONEY ═══════════════════════ -->
+    <section data-section="money" hidden class="stack--lg">
+
+      <div class="section-head">Meetings <span class="counter" id="meetingsCounter">—</span></div>
+      <div class="scroll-x"><table id="meetingsTable">
+        <thead><tr><th>id</th><th>title</th><th>scheduled</th><th>status</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <details>
+        <summary>+ schedule meeting</summary>
+        <form id="meetingForm" class="form-grid surface mt-2">
+          <label class="field">title<input name="title" type="text" required></label>
+          <label class="field">scheduled at (ISO)<input name="scheduled_at" type="datetime-local" required></label>
+          <label class="field full">agenda<textarea name="agenda"></textarea></label>
+          <label class="field">actor id<input name="actor_id" type="text"></label>
+          <div class="full"><button class="btn btn--primary full" type="submit">schedule</button></div>
+        </form>
+      </details>
+
+      <hr class="rule">
+
+      <div class="section-head">Transactions <span class="counter" id="txCounter">—</span></div>
+      <div class="scroll-x"><table id="txTable">
+        <thead><tr><th>id</th><th>occurred</th><th>amount</th><th>type</th><th>sender → receiver</th><th>method</th><th>status</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+      <details>
+        <summary>+ propose transaction</summary>
+        <form id="txForm" class="form-grid surface mt-2">
+          <label class="field">occurred at<input name="occurred_at" type="datetime-local" required></label>
+          <label class="field">amount<input name="amount" type="number" step="0.01" required></label>
+          <label class="field">currency<input name="currency" type="text" value="USD"></label>
+          <label class="field">sender<input name="sender_party" type="text" required></label>
+          <label class="field">receiver<input name="receiver_party" type="text" required></label>
+          <label class="field">location<input name="location" type="text"></label>
+          <label class="field">payment method<input name="payment_method" type="text" required placeholder="card / wire / wallet"></label>
+          <label class="field">type
+            <select name="transaction_type">
+              <option>deposit</option><option>withdrawal</option><option>refund</option>
+              <option>transfer</option><option>loan_payment</option>
+            </select>
+          </label>
+          <label class="field">actor id<input name="actor_id" type="text"></label>
+          <div class="full"><button class="btn btn--primary full" type="submit">propose</button></div>
+        </form>
+      </details>
+
+      <hr class="rule">
+
+      <div class="section-head">Open a vote</div>
+      <form id="voteForm" class="form-grid surface">
+        <label class="field">meeting<select name="meeting_id" id="voteMeeting" required></select></label>
+        <label class="field">linked transaction (optional)<select name="linked_transaction_id" id="voteTx"><option value="">— none —</option></select></label>
+        <label class="field">quorum required<input name="quorum_required" type="number" min="1" value="2" required></label>
+        <label class="field">majority threshold<input name="majority_threshold" type="number" step="0.01" value="0.5" min="0" max="1"></label>
+        <label class="field full">proposal<textarea name="proposal_text" required></textarea></label>
+        <label class="field">actor id<input name="actor_id" type="text"></label>
+        <div class="full"><button class="btn btn--primary full" type="submit">open vote</button></div>
+      </form>
+
+      <div class="section-head">Cast ballot · close vote</div>
+      <div class="grid-2">
+        <form id="ballotForm" class="form-grid surface">
+          <label class="field">vote<select name="vote_id" id="ballotVote" required></select></label>
+          <label class="field">voter<select name="voter_id" id="ballotVoter" required></select></label>
+          <label class="field">choice
+            <select name="choice"><option>yes</option><option>no</option><option>abstain</option></select>
+          </label>
+          <div class="full"><button class="btn btn--primary full" type="submit">cast</button></div>
+        </form>
+
+        <form id="closeVoteForm" class="form-grid surface">
+          <label class="field">vote<select name="vote_id" id="closeVoteVote" required></select></label>
+          <div class="full"><button class="btn full" type="submit">close vote &amp; tally</button></div>
+        </form>
+      </div>
+
+      <hr class="rule">
+
+      <div class="section-head">Spend report</div>
+      <form id="reportForm" class="cluster surface">
+        <label class="field" style="min-width:200px;">period (YYYY-MM)<input name="period" type="text" required value=""></label>
+        <button class="btn" type="submit">generate</button>
+      </form>
+
+      <div class="code-box" id="moneyOut"><span class="empty">money service output appears here.</span></div>
+    </section>
+
+    <!-- ═══════════════════════ JUDGE ═══════════════════════ -->
+    <section data-section="judge" hidden class="stack--lg">
+
+      <div class="section-head">Witness chain</div>
+      <p class="lede">
+        Every state-changing action across the four services is appended to a
+        hash-linked log. Tampering breaks the chain.
+      </p>
+      <div class="cluster">
+        <button class="btn btn--primary" id="verifyChain">verify chain</button>
+        <button class="btn" id="refreshWitness">refresh feed</button>
+      </div>
+
+      <hr class="rule">
+
+      <div class="section-head">Detectors</div>
+      <div class="cluster">
+        <button class="btn" data-detector="">run all</button>
+        <button class="btn btn--ghost" data-detector="peer_score_collusion">peer collusion</button>
+        <button class="btn btn--ghost" data-detector="money_vote_rigging">vote rigging</button>
+        <button class="btn btn--ghost" data-detector="kpi_gaming">kpi gaming</button>
+      </div>
+
+      <hr class="rule">
+
+      <div class="section-head">Anomalies <span class="counter" id="anomCounter">—</span></div>
+      <div class="cluster">
+        <button class="btn btn--ghost" data-anom-status="">all</button>
+        <button class="btn btn--ghost" data-anom-status="open">open</button>
+        <button class="btn btn--ghost" data-anom-status="reviewed">reviewed</button>
+        <button class="btn btn--ghost" data-anom-status="dismissed">dismissed</button>
+      </div>
+      <div class="scroll-x"><table id="anomTable">
+        <thead><tr><th>id</th><th>rule</th><th>severity</th><th>status</th><th>detected</th><th>evidence</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+
+      <hr class="rule">
+
+      <div class="section-head">Open audit</div>
+      <form id="auditForm" class="form-grid surface">
+        <label class="field">scope<input name="scope" type="text" required placeholder="worker / project / vote"></label>
+        <label class="field">target id<input name="target_id" type="text"></label>
+        <label class="field">actor id<input name="actor_id" type="text"></label>
+        <div class="full"><button class="btn btn--primary full" type="submit">audit</button></div>
+      </form>
+
+      <div class="code-box" id="judgeOut" style="max-height: 24rem;"><span class="empty">judge service output appears here.</span></div>
+    </section>
+  </main>
+
+  <!-- ─────────────────────────── ASIDE ─────────────────────────── -->
+  <aside class="area-aside panel">
+    <div>
+      <div class="section-head">Chain status</div>
+      <div class="status mt-2" id="chainStatus">
+        <span class="status__dot"></span><span>uninitialized</span>
+      </div>
+      <div class="stack--xs mt-3">
+        <span class="tag" id="rowsCheckedTag">rows: —</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-head">Witness feed <span class="counter" id="witnessCounter">—</span></div>
+      <div class="code-box mt-2" id="witnessFeed" style="max-height: 22rem;">
+        <span class="empty">no events yet.</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-head">Roster <span class="counter" id="rosterCounter">—</span></div>
+      <div class="code-box mt-2" id="rosterBox">
+        <span class="empty">no workers yet.</span>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-head">Endpoints</div>
+      <div class="legend mt-2" style="justify-content:flex-start; gap:4px 12px;">
+        <span><kbd>:8011</kbd> team</span>
+        <span><kbd>:8012</kbd> netdef</span>
+        <span><kbd>:8013</kbd> money</span>
+        <span><kbd>:8014</kbd> judge</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─────────────────────────── FOOTER ─────────────────────────── -->
+  <footer class="area-foot block-foot">
+    <div class="legend">
+      <span><kbd>1</kbd> team</span>
+      <span><kbd>2</kbd> netdef</span>
+      <span><kbd>3</kbd> money</span>
+      <span><kbd>4</kbd> judge</span>
+      <span><kbd>R</kbd> refresh witness</span>
+    </div>
+  </footer>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

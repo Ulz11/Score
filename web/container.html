@@ -1,0 +1,728 @@
+<!doctype html>
+<html lang="mn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Container · 1B Monitor</title>
+
+<link rel="stylesheet" href="../global.css">
+
+<style>
+  /* Local layout only. Uses global.css tokens. */
+
+  .page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 2.5vw, 2rem);
+  }
+
+  /* topbar */
+  .topbar {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: var(--space-4); flex-wrap: wrap; margin-bottom: var(--space-6);
+    padding-bottom: var(--space-4); border-bottom: var(--border-ink);
+  }
+  .topbar h1 {
+    font-family: var(--font-serif);
+    font-size: clamp(2rem, 4vw, 3rem);
+    line-height: 1.0; letter-spacing: -0.02em; margin: 0;
+  }
+  .topbar h1 em { font-style: italic; color: var(--ink-3); }
+  .topbar .meta {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4);
+    text-align: right;
+  }
+  .topbar .meta .agent { color: var(--ink); font-weight: 500; }
+
+  /* nav */
+  .nav-strip {
+    display: flex; gap: var(--space-4); margin-bottom: var(--space-6);
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .nav-strip a {
+    color: var(--ink-4); text-decoration: none; padding-bottom: 4px;
+    border-bottom: 1px solid transparent;
+  }
+  .nav-strip a:hover { color: var(--ink); }
+  .nav-strip a.active { color: var(--ink); border-bottom-color: var(--ink); }
+
+  /* ---- Container gauge ---- */
+  .gauge-wrap {
+    display: grid; grid-template-columns: 1fr 1.5fr; gap: var(--space-6);
+    margin-bottom: var(--space-7);
+  }
+  @media (max-width: 880px) { .gauge-wrap { grid-template-columns: 1fr; } }
+
+  .gauge {
+    background: var(--surface); border: var(--border-ink);
+    padding: var(--space-5);
+    position: relative;
+  }
+  .gauge .label {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-4);
+    margin-bottom: var(--space-2);
+  }
+  .gauge .amount {
+    font-family: var(--font-serif);
+    font-size: clamp(3rem, 7vw, 4.8rem);
+    line-height: 1.0; letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .gauge .amount .unit {
+    font-family: var(--font-mono); font-size: 1.25rem;
+    color: var(--ink-3); letter-spacing: 0.04em;
+    margin-left: 8px;
+  }
+  .gauge .pct {
+    margin-top: var(--space-3);
+    font-family: var(--font-mono); font-size: var(--text-sm);
+    color: var(--ink-3);
+  }
+
+  .fill-bar {
+    margin-top: var(--space-4);
+    height: 28px;
+    background: var(--surface-3);
+    border: var(--border-strong);
+    position: relative; overflow: hidden;
+  }
+  .fill-bar .fill {
+    height: 100%; background: var(--ink);
+    transition: width 600ms ease-out;
+  }
+  .fill-bar .pace-marker {
+    position: absolute; top: 0; bottom: 0;
+    width: 2px; background: var(--warn);
+  }
+  .fill-bar .pace-marker::after {
+    content: 'PACE';
+    position: absolute; top: -16px; right: 4px;
+    font-family: var(--font-mono); font-size: 9px;
+    letter-spacing: 0.1em; color: var(--warn);
+  }
+
+  /* stats grid */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px;
+    background: var(--rule); border: var(--border);
+  }
+  .stat {
+    background: var(--surface); padding: var(--space-4);
+  }
+  .stat .l {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4);
+    margin-bottom: 4px;
+  }
+  .stat .v {
+    font-family: var(--font-serif); font-size: 1.75rem;
+    line-height: 1.0; letter-spacing: -0.01em; color: var(--ink);
+  }
+  .stat .s {
+    font-family: var(--font-mono); font-size: 10px;
+    color: var(--ink-5); margin-top: 4px;
+  }
+  .stat.health-warning .v { color: var(--warn); }
+  .stat.health-critical .v { color: var(--bad, #b00020); }
+  .stat.ahead .v { color: var(--ok); }
+  .stat.behind .v { color: var(--warn); }
+
+  /* ---- Section header ---- */
+  .section-h {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin: var(--space-7) 0 var(--space-4);
+    padding-bottom: var(--space-3); border-bottom: var(--border);
+  }
+  .section-h h2 {
+    font-family: var(--font-serif);
+    font-size: 1.875rem; letter-spacing: -0.015em; margin: 0;
+    line-height: 1.1;
+  }
+  .section-h .num {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-5); letter-spacing: 0.12em; margin-right: var(--space-3);
+  }
+  .section-h .sub {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-4); letter-spacing: 0.06em; text-transform: uppercase;
+  }
+
+  /* ---- Milestone table ---- */
+  .milestones {
+    background: var(--surface); border: var(--border);
+  }
+  .ms-filters {
+    display: flex; gap: var(--space-2); padding: var(--space-3);
+    border-bottom: var(--border); flex-wrap: wrap;
+  }
+  .ms-filters button {
+    padding: 4px 10px; background: var(--surface); border: var(--border-strong);
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.04em; color: var(--ink-3); cursor: pointer;
+  }
+  .ms-filters button.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+
+  .ms-row {
+    display: grid;
+    grid-template-columns: 60px 90px 60px 1fr 110px 110px;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-bottom: var(--border);
+    align-items: center;
+    cursor: pointer;
+  }
+  .ms-row:hover { background: var(--surface-2); }
+  .ms-row.head {
+    background: var(--surface-2); cursor: default;
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-4);
+  }
+  .ms-row.head:hover { background: var(--surface-2); }
+  .ms-row .id { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--ink-3); }
+  .ms-row .date { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-3); }
+  .ms-row .track {
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 2px 6px; display: inline-block; border: var(--border-strong);
+    text-align: center;
+  }
+  .ms-row .track.tech { background: #eef4fb; }
+  .ms-row .track.mkt  { background: #eef7ec; }
+  .ms-row .track.biz  { background: #fbf0e8; }
+  .ms-row .title { font-family: var(--font-sans); font-size: 0.95rem; color: var(--ink); }
+  .ms-row .title.critical::before {
+    content: '★ '; color: var(--ink); font-weight: 700;
+  }
+  .ms-row .status {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.04em; color: var(--ink-3);
+  }
+  .ms-row .status[data-s="done"]        { color: var(--ok); }
+  .ms-row .status[data-s="in_progress"] { color: var(--ink); }
+  .ms-row .status[data-s="blocked"]     { color: var(--warn); }
+  .ms-row .status[data-s="missed"]      { color: var(--bad, #b00020); }
+  .ms-row .rev { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-3); text-align: right; }
+
+  @media (max-width: 760px) {
+    .ms-row { grid-template-columns: 50px 1fr 80px; }
+    .ms-row .date, .ms-row .track, .ms-row .rev { display: none; }
+  }
+
+  /* ---- Scenarios ---- */
+  .scenarios {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4);
+  }
+  @media (max-width: 880px) { .scenarios { grid-template-columns: 1fr; } }
+
+  .sc-card {
+    background: var(--surface); border: var(--border-strong);
+    padding: var(--space-4);
+    display: flex; flex-direction: column; gap: var(--space-3);
+  }
+  .sc-card.run { border: var(--border-ink); }
+  .sc-card h3 {
+    font-family: var(--font-serif); font-size: 1.5rem; margin: 0;
+    letter-spacing: -0.01em;
+  }
+  .sc-card .sub {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-4);
+  }
+  .sc-rows { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; }
+  .sc-rows .k {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-4); letter-spacing: 0.04em;
+  }
+  .sc-rows .v {
+    font-family: var(--font-mono); font-size: var(--text-sm);
+    color: var(--ink); text-align: right;
+  }
+  .sc-rows .v.pos { color: var(--ok); }
+  .sc-rows .v.neg { color: var(--warn); }
+  .sc-card button {
+    padding: 8px 14px; background: var(--ink); color: var(--surface);
+    border: none; cursor: pointer;
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin-top: auto;
+  }
+  .sc-card button:hover { background: var(--ink-2); }
+
+  /* ---- Excel + actions ---- */
+  .actions {
+    display: flex; gap: var(--space-3); flex-wrap: wrap;
+    padding: var(--space-4);
+    background: var(--surface); border: var(--border);
+  }
+  .actions button, .actions label.file-btn {
+    padding: 8px 16px;
+    background: var(--surface); color: var(--ink);
+    border: var(--border-ink);
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+  }
+  .actions button:hover, .actions label.file-btn:hover {
+    background: var(--ink); color: var(--surface);
+  }
+  .actions input[type=file] { display: none; }
+
+  /* ---- Inflows ---- */
+  .inflows-table {
+    background: var(--surface); border: var(--border);
+    margin-top: var(--space-3);
+  }
+  .inflow-row {
+    display: grid;
+    grid-template-columns: 1fr 120px 180px 70px 100px;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    border-bottom: var(--border);
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-3);
+  }
+  .inflow-row.head {
+    background: var(--surface-2);
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-4);
+  }
+  .inflow-row .amt {
+    text-align: right; color: var(--ink); font-weight: 500;
+  }
+
+  @media (max-width: 760px) {
+    .inflow-row { grid-template-columns: 1fr 110px; }
+    .inflow-row .ch, .inflow-row .src, .inflow-row .ms { display: none; }
+  }
+
+  /* ---- Status banner ---- */
+  #notify {
+    position: fixed; bottom: var(--space-4); left: 50%; transform: translateX(-50%);
+    padding: 10px 16px; background: var(--ink); color: var(--surface);
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.06em;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    z-index: 100;
+  }
+  #notify.show { opacity: 1; }
+
+  /* helper colors using existing tokens */
+  :root {
+    --ok:   #166534;
+    --warn: #b45309;
+  }
+</style>
+</head>
+<body>
+
+<main class="page">
+
+  <header class="topbar">
+    <div>
+      <h1>Container · <em>1B Monitor</em></h1>
+      <div class="nav-strip" style="margin-top: 12px; margin-bottom: 0;">
+        <a href="./index.html">Sheet</a>
+        <a href="./container.html" class="active">Container</a>
+        <a href="./admin.html">Admin</a>
+      </div>
+    </div>
+    <div class="meta">
+      <div class="agent" id="monitorName">Container Agent</div>
+      <div id="periodLabel">2026-05-22 → 2026-07-20</div>
+      <div id="loginInfo" style="margin-top: 8px;">—</div>
+    </div>
+  </header>
+
+  <!-- Container gauge -->
+  <section class="gauge-wrap">
+    <div class="gauge">
+      <div class="label">Target</div>
+      <h2 class="amount" id="targetAmount">1,000,000,000<span class="unit">MNT</span></h2>
+      <div class="pct" id="filledLabel">Filled: 0 MNT  ·  0.0%</div>
+      <div class="fill-bar">
+        <div class="fill" id="fillBar" style="width: 0%"></div>
+        <div class="pace-marker" id="paceMarker" style="left: 0%"></div>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat" id="statHealth">
+        <div class="l">Agent health</div>
+        <div class="v" id="healthLabel">—</div>
+        <div class="s" id="healthSub">checking…</div>
+      </div>
+      <div class="stat" id="statPace">
+        <div class="l">Pace delta</div>
+        <div class="v" id="paceLabel">—</div>
+        <div class="s" id="paceSub">fill vs schedule</div>
+      </div>
+      <div class="stat">
+        <div class="l">Days elapsed</div>
+        <div class="v" id="daysLabel">—</div>
+        <div class="s" id="daysSub">of 60 total</div>
+      </div>
+      <div class="stat">
+        <div class="l">Inflows recorded</div>
+        <div class="v" id="inflowCount">—</div>
+        <div class="s">cash events</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Milestones -->
+  <div class="section-h">
+    <h2><span class="num">01</span>Milestones</h2>
+    <span class="sub" id="milestoneSummary">— done / —</span>
+  </div>
+
+  <div class="milestones">
+    <div class="ms-filters" id="msFilters">
+      <button data-f="all" class="on">all</button>
+      <button data-f="tech">tech</button>
+      <button data-f="mkt">mkt</button>
+      <button data-f="biz">biz</button>
+      <button data-f="critical">★ critical</button>
+      <button data-f="overdue">overdue</button>
+    </div>
+    <div class="ms-row head">
+      <div>ID</div><div>Date</div><div>Track</div>
+      <div>Title</div><div>Status</div><div>Expected MNT</div>
+    </div>
+    <div id="msList"></div>
+  </div>
+
+  <!-- Scenarios -->
+  <div class="section-h">
+    <h2><span class="num">02</span>Scenarios</h2>
+    <span class="sub">3 frozen inputs · click to simulate</span>
+  </div>
+
+  <div class="scenarios" id="scenariosWrap"></div>
+
+  <!-- Inflows + Excel -->
+  <div class="section-h">
+    <h2><span class="num">03</span>Inflows &amp; Excel</h2>
+    <span class="sub">all changes go to witness log</span>
+  </div>
+
+  <div class="actions">
+    <button id="btnAddInflow">+ Add inflow</button>
+    <label class="file-btn">
+      Upload Excel
+      <input type="file" id="excelUpload" accept=".xlsx" />
+    </label>
+    <button id="btnExportExcel">Download Excel</button>
+    <button id="btnRefresh">↻ Refresh</button>
+  </div>
+
+  <div class="inflows-table">
+    <div class="inflow-row head">
+      <div>When</div><div class="amt">Amount MNT</div>
+      <div class="ch">Channel</div><div class="ms">Milestone</div>
+      <div class="src">Source</div>
+    </div>
+    <div id="inflowList"></div>
+  </div>
+
+</main>
+
+<div id="notify"></div>
+
+<script>
+  // ─── config ───
+  const _LOCAL = ['127.0.0.1', 'localhost'].includes(location.hostname);
+  const API = {
+    team:      _LOCAL ? 'http://127.0.0.1:8011' : '/api/team',
+    container: _LOCAL ? 'http://127.0.0.1:8015' : '/api/container',
+  };
+
+  function fmt(n) {
+    if (n === null || n === undefined) return '—';
+    return Number(n).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  }
+  function notify(msg, kind) {
+    const el = document.getElementById('notify');
+    el.textContent = msg;
+    el.style.background = kind === 'error' ? '#b00020' : '#0a0a0a';
+    el.classList.add('show');
+    setTimeout(() => el.classList.remove('show'), 2500);
+  }
+  async function fetchJson(url, opts = {}) {
+    const r = await fetch(url, { credentials: 'include', ...opts });
+    if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+    return r.json();
+  }
+
+  // ─── load all state ───
+  let MILESTONES = [];
+  let CURRENT_FILTER = 'all';
+
+  async function refresh() {
+    try {
+      // who am I
+      try {
+        const me = await fetchJson(`${API.team}/auth/whoami`);
+        document.getElementById('loginInfo').textContent =
+          `@${me.handle}` + (me.is_admin ? ' (admin)' : '');
+      } catch {
+        document.getElementById('loginInfo').textContent = 'not logged in';
+      }
+
+      // container state
+      const c = await fetchJson(`${API.container}/container`);
+      document.getElementById('monitorName').textContent =
+        (c.monitor && c.monitor.name) || 'Container Agent';
+      document.getElementById('periodLabel').textContent =
+        `${c.started_at} → ${c.ends_at}`;
+      document.getElementById('targetAmount').innerHTML =
+        `${fmt(c.target_mnt)}<span class="unit">${c.currency}</span>`;
+      document.getElementById('filledLabel').textContent =
+        `Filled: ${fmt(c.filled_mnt)} MNT  ·  ${c.fill_pct.toFixed(1)}%`;
+      document.getElementById('fillBar').style.width =
+        Math.min(100, c.fill_pct) + '%';
+      document.getElementById('paceMarker').style.left =
+        Math.min(100, c.expected_pct_by_pace) + '%';
+      document.getElementById('daysLabel').textContent =
+        c.elapsed_days;
+      document.getElementById('daysSub').textContent =
+        `of ${c.total_days} total`;
+      document.getElementById('inflowCount').textContent =
+        fmt(c.inflow_count);
+
+      const paceClass = c.ahead_or_behind_pct >= 0 ? 'ahead' : 'behind';
+      const statPace = document.getElementById('statPace');
+      statPace.className = 'stat ' + paceClass;
+      const sign = c.ahead_or_behind_pct >= 0 ? '+' : '';
+      document.getElementById('paceLabel').textContent =
+        `${sign}${c.ahead_or_behind_pct.toFixed(1)}%`;
+
+      // agent report (health)
+      const rep = await fetchJson(`${API.container}/agent/report`);
+      const statH = document.getElementById('statHealth');
+      statH.className = 'stat health-' + (rep.health === 'ok' ? '' : rep.health);
+      document.getElementById('healthLabel').textContent = rep.health.toUpperCase();
+      document.getElementById('healthSub').textContent =
+        `${rep.milestone_summary.overdue.length} overdue · ${rep.milestone_summary.blocked.length} blocked`;
+
+      // milestones
+      const ms = await fetchJson(`${API.container}/milestones`);
+      MILESTONES = ms.milestones;
+      const doneCount = MILESTONES.filter(m => m.status === 'done').length;
+      document.getElementById('milestoneSummary').textContent =
+        `${doneCount} done / ${ms.total_count} (${ms.critical_count} critical)`;
+      renderMilestones();
+
+      // scenarios
+      const scs = await fetchJson(`${API.container}/scenarios`);
+      renderScenarios(scs.scenarios);
+
+      // inflows
+      const fl = await fetchJson(`${API.container}/container/inflows?limit=20`);
+      renderInflows(fl.inflows);
+
+    } catch (e) {
+      notify('Refresh failed: ' + e.message, 'error');
+    }
+  }
+
+  function renderMilestones() {
+    const today = new Date().toISOString().slice(0, 10);
+    const filt = CURRENT_FILTER;
+    const list = document.getElementById('msList');
+    list.innerHTML = '';
+    let items = MILESTONES;
+    if (filt === 'tech' || filt === 'mkt' || filt === 'biz') {
+      items = items.filter(m => m.track === filt);
+    } else if (filt === 'critical') {
+      items = items.filter(m => m.critical);
+    } else if (filt === 'overdue') {
+      items = items.filter(m => m.status !== 'done' && m.date < today);
+    }
+    for (const m of items) {
+      const row = document.createElement('div');
+      row.className = 'ms-row';
+      row.innerHTML = `
+        <div class="id">${m.id}</div>
+        <div class="date">${m.date}</div>
+        <div class="track ${m.track}">${m.track}</div>
+        <div class="title ${m.critical ? 'critical' : ''}">${m.title}</div>
+        <div class="status" data-s="${m.status}">${m.status} · ${m.completion_pct.toFixed(0)}%</div>
+        <div class="rev">${m.expected_revenue_mnt ? fmt(m.expected_revenue_mnt) : '—'}</div>
+      `;
+      row.addEventListener('click', () => openMilestone(m));
+      list.appendChild(row);
+    }
+  }
+
+  function renderScenarios(scs) {
+    const wrap = document.getElementById('scenariosWrap');
+    wrap.innerHTML = '';
+    for (const [key, info] of Object.entries(scs)) {
+      const card = document.createElement('div');
+      card.className = 'sc-card';
+      card.innerHTML = `
+        <div>
+          <div class="sub">${key}</div>
+          <h3>${info.label}</h3>
+        </div>
+        <div class="sc-rows" id="scOut_${key}">
+          <div class="k">channels</div>
+          <div class="v">${info.channels.length}</div>
+        </div>
+        <button data-key="${key}">▶ Simulate</button>
+      `;
+      card.querySelector('button').addEventListener('click', () => runScenario(key));
+      wrap.appendChild(card);
+    }
+  }
+
+  async function runScenario(key) {
+    try {
+      const r = await fetchJson(`${API.container}/scenarios/simulate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scenario_key: key }),
+      });
+      const out = document.getElementById('scOut_' + key);
+      const aClass = r.a_net_profit_mnt >= 0 ? 'pos' : 'neg';
+      const bClass = r.b_net_profit_mnt >= 0 ? 'pos' : 'neg';
+      out.innerHTML = `
+        <div class="k">Revenue</div><div class="v">${fmt(r.total_revenue_mnt/1e6)}M</div>
+        <div class="k">Goal %</div><div class="v">${r.goal_pct.toFixed(1)}%</div>
+        <div class="k">Orders</div><div class="v">${fmt(r.total_orders)}</div>
+        <div class="k">A net</div><div class="v ${aClass}">${(r.a_net_profit_mnt>=0?'+':'')}${fmt(r.a_net_profit_mnt/1e6)}M</div>
+        <div class="k">B net</div><div class="v ${bClass}">${(r.b_net_profit_mnt>=0?'+':'')}${fmt(r.b_net_profit_mnt/1e6)}M</div>
+        <div class="k">Win-win</div><div class="v">${r.win_win ? '✓' : '✗'}</div>
+      `;
+      notify(`Simulated ${key}: ${r.goal_pct.toFixed(1)}% of goal`);
+    } catch (e) {
+      notify('Simulate failed: ' + e.message, 'error');
+    }
+  }
+
+  function renderInflows(inflows) {
+    const list = document.getElementById('inflowList');
+    list.innerHTML = '';
+    if (!inflows.length) {
+      list.innerHTML = '<div class="inflow-row"><div style="grid-column:1/-1; text-align:center; color:var(--ink-5); font-style:italic;">No inflows yet.</div></div>';
+      return;
+    }
+    for (const i of inflows) {
+      const row = document.createElement('div');
+      row.className = 'inflow-row';
+      const when = (i.occurred_at || '').replace('T', ' ').slice(0, 16);
+      row.innerHTML = `
+        <div>${when}</div>
+        <div class="amt">${fmt(i.amount_mnt)}</div>
+        <div class="ch">${i.channel}</div>
+        <div class="ms">${i.milestone_id || '—'}</div>
+        <div class="src">${i.source}</div>
+      `;
+      list.appendChild(row);
+    }
+  }
+
+  async function openMilestone(m) {
+    const newStatus = prompt(
+      `Milestone ${m.id} — ${m.title}\n\nOwners: ${m.owners.join(', ')}\nKPI: ${m.kpi}\n\nNew status (pending/in_progress/done/blocked/missed):`,
+      m.status,
+    );
+    if (!newStatus) return;
+    const pct = parseFloat(prompt('Completion % (0-100):', m.completion_pct.toString()) || '0');
+    try {
+      await fetchJson(`${API.container}/milestones/${m.id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, completion_pct: pct }),
+      });
+      notify(`Milestone ${m.id} updated`);
+      refresh();
+    } catch (e) {
+      notify('Update failed: ' + e.message, 'error');
+    }
+  }
+
+  async function addInflow() {
+    const amt = parseFloat(prompt('Amount MNT:', '50000000') || '0');
+    if (!amt) return;
+    const channel = prompt(
+      'Channel (ecom_site_50off / zaisan_offline_70off / fb_messenger_chatbot / tourist_channel / limited_820_edition):',
+      'ecom_site_50off',
+    );
+    if (!channel) return;
+    const milestone_id = prompt('Milestone (M01..M27, blank=none):', '') || null;
+    try {
+      await fetchJson(`${API.container}/container/inflows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          occurred_at: new Date().toISOString(),
+          amount_mnt: amt,
+          channel,
+          milestone_id: milestone_id || null,
+        }),
+      });
+      notify(`Inflow ${fmt(amt)} added`);
+      refresh();
+    } catch (e) {
+      notify('Add failed: ' + e.message, 'error');
+    }
+  }
+
+  async function uploadExcel(file) {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await fetch(`${API.container}/excel/import`, {
+        method: 'POST', credentials: 'include', body: fd,
+      });
+      if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+      const j = await r.json();
+      notify(`Imported ${j.imported} rows` + (j.errors.length ? `, ${j.errors.length} errors` : ''));
+      refresh();
+    } catch (e) {
+      notify('Import failed: ' + e.message, 'error');
+    }
+  }
+
+  async function exportExcel() {
+    try {
+      const r = await fetch(`${API.container}/excel/export`, { credentials: 'include' });
+      if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `container_state_${new Date().toISOString().slice(0,10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      notify('Excel downloaded');
+    } catch (e) {
+      notify('Export failed: ' + e.message, 'error');
+    }
+  }
+
+  // ─── wiring ───
+  document.getElementById('msFilters').addEventListener('click', e => {
+    if (e.target.tagName === 'BUTTON') {
+      document.querySelectorAll('#msFilters button').forEach(b => b.classList.remove('on'));
+      e.target.classList.add('on');
+      CURRENT_FILTER = e.target.dataset.f;
+      renderMilestones();
+    }
+  });
+  document.getElementById('btnRefresh').addEventListener('click', refresh);
+  document.getElementById('btnAddInflow').addEventListener('click', addInflow);
+  document.getElementById('btnExportExcel').addEventListener('click', exportExcel);
+  document.getElementById('excelUpload').addEventListener('change', e => {
+    if (e.target.files[0]) uploadExcel(e.target.files[0]);
+  });
+
+  refresh();
+  // Light auto-refresh every 60s so the agent's view stays live.
+  setInterval(refresh, 60_000);
+</script>
+
+</body>
+</html>

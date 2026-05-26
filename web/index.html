@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Self · Sheet</title>
+
+<link rel="stylesheet" href="../global.css">
+
+<style>
+  /* Local layout glue. Only uses global.css tokens. No new colors / radii. */
+
+  input[type="text"], input[type="number"], input[type="datetime-local"],
+  input[type="password"], select, textarea {
+    width: 100%;
+    padding: 0.5rem 0.7rem;
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    color: var(--ink);
+    background: var(--surface);
+    border: var(--border-strong);
+    border-radius: var(--radius-0);
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--ink); }
+  textarea { min-height: 4.5rem; resize: vertical; font-family: var(--font-mono); }
+
+  label.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+  }
+
+  .page {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: clamp(1.25rem, 3vw, 2.5rem) clamp(1rem, 2.5vw, 2rem);
+  }
+
+  /* identity chip top-right */
+  .topbar { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+  .topbar .grow { flex: 1; }
+  .id-chip {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: var(--border-strong);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    letter-spacing: 0.04em;
+  }
+  .id-chip .you { font-family: var(--font-sans); font-weight: 500; font-size: var(--text-sm); letter-spacing: 0; }
+  .id-chip .badge {
+    padding: 0 5px;
+    border: var(--border);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+  .id-chip.is-admin .badge { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+
+  /* ---- Desktop sheet ---- */
+  .sheet-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .sheet {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) repeat(7, minmax(150px, 1fr));
+    gap: 1px;
+    background: var(--rule);
+    border: var(--border);
+    min-width: 1100px;
+  }
+  .cell {
+    background: var(--surface);
+    padding: var(--space-3) var(--space-4);
+    min-height: 96px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .cell.corner { background: var(--surface-2); align-items: flex-start; justify-content: space-between; }
+  .corner-title { font-family: var(--font-serif); font-size: 1.05rem; line-height: 1; font-style: italic; }
+  .cell.task-head { background: var(--surface-2); }
+  .task-head .icon {
+    font-family: var(--font-mono); font-size: 14px; color: var(--ink);
+    width: 22px; height: 22px;
+    border: var(--border-ink);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .task-head .label {
+    font-family: var(--font-sans); font-weight: 600; font-size: 13px;
+    letter-spacing: -0.005em; line-height: 1.2; color: var(--ink);
+  }
+  .task-head .sub {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-4); letter-spacing: 0.06em; text-transform: uppercase;
+  }
+
+  .cell.member-head { background: var(--surface); justify-content: center; }
+  .cell.member-head.is-self { background: var(--ink); color: var(--surface); }
+  .member-head .name {
+    font-family: var(--font-serif); font-size: 1.15rem;
+    line-height: 1.1; letter-spacing: -0.01em;
+  }
+  .member-head .handle {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-4); letter-spacing: 0.04em;
+  }
+  .member-head.is-self .handle { color: var(--ink-5); }
+  .member-head .perf {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-3); letter-spacing: 0.04em; margin-top: 4px;
+  }
+  .member-head.is-self .perf { color: var(--ink-5); }
+  .member-head .lock { font-family: var(--font-mono); font-size: 10px; color: var(--ink-4); margin-left: 4px; }
+  .member-head .placeholder-mark { font-family: var(--font-serif); font-style: italic; color: var(--ink-5); }
+
+  .cell.task-cell { cursor: pointer; }
+  .cell.task-cell:hover { background: var(--ink); color: var(--surface); }
+  .cell.task-cell:hover .meta,
+  .cell.task-cell:hover .bottom { color: var(--ink-5); }
+  .cell.task-cell.in-self-row { background: var(--surface-3); }
+  .cell.task-cell.in-self-row:hover { background: var(--ink); }
+  .task-cell .meta {
+    display: flex; justify-content: space-between;
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-4); letter-spacing: 0.04em;
+  }
+  .task-cell .status {
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--font-mono); font-size: var(--text-sm);
+    color: inherit; letter-spacing: 0.04em;
+  }
+  .task-cell .status .glyph {
+    display: inline-flex; width: 14px; justify-content: center; font-weight: 500;
+  }
+  .task-cell .status[data-status="stock"]  .glyph { color: var(--ok); }
+  .task-cell .status[data-status="danger"] .glyph { color: var(--warn); }
+  .task-cell:hover .status[data-status="stock"]  .glyph,
+  .task-cell:hover .status[data-status="danger"] .glyph { color: inherit; }
+  .task-cell .bottom {
+    margin-top: auto; display: flex; gap: var(--space-3);
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-4); letter-spacing: 0.04em;
+  }
+  .cell.empty-member {
+    background: var(--surface-2); color: var(--ink-5);
+    font-family: var(--font-serif); font-style: italic;
+    align-items: center; justify-content: center; min-height: 96px;
+  }
+
+  /* ---- Mobile stack: members down, 7 task chips inside each ---- */
+  .stack-list { display: none; }
+  @media (max-width: 760px) {
+    .sheet-wrap { display: none; }
+    .stack-list { display: flex; flex-direction: column; gap: var(--space-3); }
+    .stack-card {
+      background: var(--surface);
+      border: var(--border);
+      padding: var(--space-3) var(--space-4);
+    }
+    .stack-card.is-self {
+      border: var(--border-ink);
+    }
+    .stack-card header {
+      display: flex; justify-content: space-between; align-items: baseline;
+      gap: var(--space-2); margin-bottom: var(--space-2);
+    }
+    .stack-card header .name {
+      font-family: var(--font-serif); font-size: 1.25rem; letter-spacing: -0.01em;
+    }
+    .stack-card header .meta {
+      font-family: var(--font-mono); font-size: var(--text-xs);
+      color: var(--ink-4); text-align: right;
+    }
+    .stack-chips {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px;
+      background: var(--rule); border: var(--border);
+    }
+    .stack-chip {
+      background: var(--surface);
+      padding: var(--space-2) var(--space-3);
+      display: flex; flex-direction: column; gap: 2px;
+      cursor: pointer;
+      min-height: 56px;
+    }
+    .stack-chip:hover, .stack-chip:active {
+      background: var(--ink); color: var(--surface);
+    }
+    .stack-chip .label {
+      font-family: var(--font-sans); font-weight: 500; font-size: 12px; line-height: 1.15;
+    }
+    .stack-chip .status {
+      display: flex; align-items: center; gap: 5px;
+      font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.04em;
+      color: var(--ink-4);
+    }
+    .stack-chip:hover .status, .stack-chip:active .status { color: var(--ink-5); }
+    .stack-chip .glyph { display: inline-flex; width: 10px; justify-content: center; }
+    .stack-chip[data-status="stock"]  .glyph { color: var(--ok); }
+    .stack-chip[data-status="danger"] .glyph { color: var(--warn); }
+    .stack-chip:hover[data-status="stock"]  .glyph,
+    .stack-chip:hover[data-status="danger"] .glyph { color: inherit; }
+  }
+
+  /* ---- Modal ---- */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 50;
+    background: rgba(10, 10, 10, 0.55);
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: clamp(1rem, 4vw, 3rem) var(--space-4) var(--space-4);
+  }
+  .modal {
+    width: min(640px, 100%);
+    max-height: calc(100vh - 2 * var(--space-4));
+    overflow: auto;
+    background: var(--surface);
+    border: var(--border-ink);
+    padding: clamp(1.25rem, 3vw, 1.75rem);
+  }
+  .modal h2 {
+    font-family: var(--font-serif); font-size: 1.75rem;
+    line-height: 1.1; letter-spacing: -0.015em;
+    margin: 0 0 var(--space-1);
+  }
+  .modal h2 em { font-style: italic; }
+  .modal .sub {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-4); letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .modal .group { margin-top: var(--space-4); }
+  .modal .row { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+  .modal .row > * { flex: 1; min-width: 200px; }
+  @media (max-width: 540px) {
+    .modal-backdrop { padding: 0; }
+    .modal {
+      width: 100%;
+      min-height: 100vh; max-height: 100vh;
+      border: none; padding: var(--space-4);
+    }
+  }
+
+  .seg { display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--space-2); }
+  @media (max-width: 540px) { .seg { grid-template-columns: repeat(3, 1fr); } }
+  .seg button {
+    padding: 0.55rem 0;
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--ink-3); background: transparent;
+    border: var(--border-strong); border-radius: var(--radius-0);
+  }
+  .seg button:hover { color: var(--ink); border-color: var(--ink); }
+  .seg button.is-active {
+    background: var(--ink); color: var(--surface); border-color: var(--ink);
+  }
+  .seg button[data-status="stock"].is-active { background: var(--ok); border-color: var(--ok); }
+  .seg button[data-status="danger"].is-active { background: var(--warn); border-color: var(--warn); }
+
+  .file-zone {
+    padding: var(--space-4);
+    border: 1px dashed var(--rule-2);
+    text-align: center;
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-4); cursor: pointer;
+  }
+  .file-zone:hover { border-style: solid; border-color: var(--ink); color: var(--ink); }
+  .file-zone strong { color: var(--ink); }
+  .file-zone input { display: none; }
+
+  .history {
+    display: flex; flex-direction: column; gap: var(--space-2);
+    max-height: 18rem; overflow-y: auto; padding-right: 4px;
+  }
+  .history-item {
+    background: var(--surface); border: var(--border);
+    padding: var(--space-2) var(--space-3);
+  }
+  .history-item .meta {
+    display: flex; justify-content: space-between; gap: var(--space-2);
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-4); letter-spacing: 0.04em; margin-bottom: 4px;
+  }
+  .history-item .body {
+    font-size: var(--text-sm); line-height: 1.45;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .history-item .body a { color: var(--ink); text-decoration: underline; }
+  .history-item .body a:hover { background: var(--ink); color: var(--surface); text-decoration: none; }
+  .history-item .badge {
+    display: inline-block; padding: 0 5px;
+    border: var(--border); margin-right: 4px;
+    font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--ink-3); vertical-align: 1px;
+  }
+  .history-item .body strong.mention { background: var(--ink); color: var(--surface); padding: 0 3px; }
+  .history-empty {
+    font-family: var(--font-serif); font-style: italic;
+    color: var(--ink-5); text-align: center; padding: var(--space-4) 0;
+  }
+
+  .toast {
+    position: fixed; bottom: var(--space-5); left: 50%; transform: translateX(-50%);
+    z-index: 100;
+    background: var(--ink); color: var(--surface);
+    padding: var(--space-2) var(--space-4);
+    font-family: var(--font-mono); font-size: var(--text-sm);
+    letter-spacing: 0.04em;
+  }
+
+  /* Login overlay */
+  .login-bg {
+    position: fixed; inset: 0; z-index: 200;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    padding: var(--space-4);
+  }
+  .login-card {
+    width: min(420px, 100%);
+    background: var(--surface);
+    border: var(--border-ink);
+    padding: var(--space-6);
+  }
+  .login-card h2 {
+    font-family: var(--font-serif); font-size: 2rem;
+    line-height: 1.05; margin: 0 0 var(--space-1);
+    letter-spacing: -0.015em;
+  }
+  .login-card h2 em { font-style: italic; }
+  .login-card .lede { color: var(--ink-3); margin-bottom: var(--space-4); }
+  .login-card .err {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink); background: var(--surface-2);
+    border: var(--border-strong); padding: var(--space-2) var(--space-3);
+    margin-bottom: var(--space-3); letter-spacing: 0.02em;
+  }
+  .login-card .skip {
+    margin-top: var(--space-3);
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--ink-4); letter-spacing: 0.04em;
+    text-align: center;
+  }
+  .login-card .skip button {
+    background: none; border: 0; padding: 0;
+    font: inherit; color: var(--ink-3); text-decoration: underline; cursor: pointer;
+  }
+
+  /* acting-as picker */
+  .acting {
+    display: inline-flex; align-items: center; gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: var(--border-strong);
+  }
+  .acting .lbl {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-4);
+  }
+  .acting select {
+    border: none; padding: 0; width: auto;
+    background: transparent; font-weight: 500;
+  }
+  .acting[disabled], .acting.is-disabled {
+    background: var(--surface-2); color: var(--ink-4);
+  }
+</style>
+</head>
+<body>
+
+<!-- login overlay, hidden until needed -->
+<div class="login-bg hidden" id="loginOverlay">
+  <div class="login-card">
+    <span class="eyebrow">Sign in</span>
+    <h2>Who's <em>watching</em>?</h2>
+    <p class="lede">Sign in with your handle and password. Members without a password can keep using the public Acting-as picker.</p>
+    <div id="loginErr" class="err hidden"></div>
+    <form id="loginForm" class="stack">
+      <label class="field">handle<input id="loginHandle" type="text" autocomplete="username" required></label>
+      <label class="field">password<input id="loginPass" type="password" autocomplete="current-password" required></label>
+      <button class="btn btn--primary full" type="submit">Sign in</button>
+    </form>
+    <div class="skip">
+      <button type="button" id="skipLoginBtn">continue as guest (no admin actions)</button>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+
+  <header class="block-head stack">
+    <div class="topbar">
+      <span class="eyebrow">Self · Sheet</span>
+      <span class="grow"></span>
+
+      <label class="acting" id="actingWrap" title="Acting as">
+        <span class="lbl">acting as</span>
+        <select id="actingPicker" aria-label="Acting as"></select>
+      </label>
+
+      <span class="id-chip hidden" id="idChip">
+        <span class="you" id="idChipName">—</span>
+        <span class="badge" id="idChipBadge">guest</span>
+        <button id="signOutBtn" class="btn btn--ghost" style="padding: 2px 8px; font-size: 11px;">sign out</button>
+      </span>
+      <button id="signInBtn" class="btn btn--ghost hidden">sign in</button>
+
+      <a href="container.html" class="btn btn--ghost">Container →</a>
+      <a href="admin.html" class="btn btn--ghost">Admin →</a>
+    </div>
+    <h1 class="h1">A team, <em>scored</em>.</h1>
+    <p class="lede">
+      Members down, tasks across. Click any cell to log status, ideas, links,
+      files, and peer scores. Your own row is highlighted; password-protected
+      members can only be acted on while signed in as themselves (or admin).
+    </p>
+  </header>
+
+  <main class="mt-6">
+    <div class="sheet-wrap">
+      <div class="sheet" id="sheet" aria-label="10 by 7 self sheet"></div>
+    </div>
+    <div class="stack-list" id="stackList" aria-label="mobile members list"></div>
+  </main>
+
+  <footer class="block-foot mt-6">
+    <div class="legend">
+      <span><kbd>↵</kbd> open cell</span>
+      <span><kbd>Esc</kbd> close</span>
+      <span>10 rows × 7 cols · desktop</span>
+      <span>members stacked · mobile</span>
+    </div>
+  </footer>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+
+<script src="sheet.js"></script>
+</body>
+</html>
