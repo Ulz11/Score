@@ -22,7 +22,7 @@ from pathlib import Path
 import uvicorn
 
 HERE = Path(__file__).resolve().parent
-STATIC_DIR = HERE.parent  # parent has global.css and we'll add web/
+STATIC_DIR = HERE.parent / "public"
 
 HOST = os.environ.get("HOST", "127.0.0.1")
 
