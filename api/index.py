@@ -17,6 +17,25 @@ os.environ.setdefault("CORS_ORIGIN", "*")
 from shared.bootstrap import init as _init
 _init(seed=True, iveel=True)
 
+# Ensure an admin account exists (Vercel DB is ephemeral; re-created on cold start)
+def _ensure_admin() -> None:
+    from shared import auth
+    from shared.db import new_id, transaction
+    pw = os.environ.get("ADMIN_PASSWORD", "admin1234")
+    with transaction() as conn:
+        row = conn.execute(
+            "SELECT id FROM team_workers WHERE handle='admin' AND is_admin=1"
+        ).fetchone()
+        if row:
+            return
+        conn.execute(
+            """INSERT INTO team_workers (id, name, type, handle, password_hash, is_admin)
+               VALUES (?, 'Admin', 'human', 'admin', ?, 1)""",
+            (new_id(), auth.hash_password(pw)),
+        )
+
+_ensure_admin()
+
 from fastapi import FastAPI
 from services.team.main import app as team_app
 from services.netdef.main import app as netdef_app
