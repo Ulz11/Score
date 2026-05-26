@@ -293,30 +293,100 @@
 
   .history {
     display: flex; flex-direction: column; gap: var(--space-2);
-    max-height: 18rem; overflow-y: auto; padding-right: 4px;
+    max-height: 22rem; overflow-y: auto; padding-right: 4px;
   }
   .history-item {
     background: var(--surface); border: var(--border-strong);
     padding: var(--space-3) var(--space-4);
+    display: grid;
+    grid-template-columns: 40px 1fr;
+    gap: var(--space-3);
+    align-items: start;
   }
-  .history-item .meta {
-    display: flex; justify-content: space-between; gap: var(--space-2);
-    font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 600;
-    color: var(--ink-3); letter-spacing: 0.04em; margin-bottom: 6px;
+  .history-item.is-mine {
+    border-left-width: 5px;
+    border-left-color: var(--ink);
+    background: var(--surface-2);
+  }
+  .history-item .avatar {
+    width: 38px; height: 38px;
+    border: 2px solid var(--ink);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-sans); font-weight: 700; font-size: 16px;
+    color: var(--ink); background: var(--surface);
+    flex-shrink: 0;
+  }
+  .history-item .avatar.is-mine { background: var(--ink); color: var(--surface); }
+  .history-item .hi-content { min-width: 0; }
+  .history-item .hi-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: var(--space-2); margin-bottom: 4px;
+  }
+  .history-item .hi-name {
+    font-family: var(--font-sans); font-weight: 700; font-size: var(--text-base);
+    color: var(--ink);
+  }
+  .history-item .hi-handle {
+    font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+    color: var(--ink-3); letter-spacing: 0.04em; margin-left: 6px;
+  }
+  .history-item .hi-when {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    color: var(--ink-4); letter-spacing: 0.04em; white-space: nowrap;
+  }
+  .history-item .hi-tag { margin-bottom: 6px; }
+  .history-item .you-pill {
+    display: inline-block; padding: 1px 6px; margin-left: 6px;
+    background: var(--ink); color: var(--surface);
+    font-family: var(--font-mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase; vertical-align: 2px;
   }
   .history-item .body {
     font-size: var(--text-sm); line-height: 1.5; font-weight: 500;
-    white-space: pre-wrap; word-break: break-word;
+    white-space: pre-wrap; word-break: break-word; color: var(--ink-2);
   }
-  .history-item .body a { color: var(--ink); text-decoration: underline; }
+  .history-item .body a { color: var(--ink); text-decoration: underline; font-weight: 600; }
   .history-item .body a:hover { background: var(--ink); color: var(--surface); text-decoration: none; }
   .history-item .badge {
     display: inline-block; padding: 1px 6px;
-    border: var(--border-strong); margin-right: 6px;
+    border: var(--border-strong);
     font-family: var(--font-mono); font-size: 10px; font-weight: 700;
     letter-spacing: 0.1em; text-transform: uppercase;
     color: var(--ink); background: var(--surface-2); vertical-align: 1px;
   }
+
+  /* posting-as banner above textarea */
+  .posting-as {
+    display: flex; align-items: center; gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: var(--border-ink);
+    background: var(--surface-2);
+    margin-bottom: var(--space-3);
+  }
+  .posting-as .avatar {
+    width: 40px; height: 40px;
+    border: 2px solid var(--ink); border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-sans); font-weight: 700; font-size: 17px;
+    background: var(--ink); color: var(--surface);
+    flex-shrink: 0;
+  }
+  .posting-as .lbl {
+    font-family: var(--font-mono); font-size: 10px; font-weight: 700;
+    letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-4);
+    display: block; margin-bottom: 2px;
+  }
+  .posting-as .who {
+    font-family: var(--font-sans); font-weight: 700; font-size: var(--text-md);
+    color: var(--ink);
+  }
+  .posting-as .handle {
+    font-family: var(--font-mono); font-size: var(--text-xs); font-weight: 600;
+    color: var(--ink-3); margin-left: 6px;
+  }
+  .posting-as.is-guest { background: var(--bg); }
+  .posting-as.is-guest .avatar { background: var(--surface); color: var(--ink); }
   .history-item .body strong.mention { background: var(--ink); color: var(--surface); padding: 0 3px; }
   .history-empty {
     font-family: var(--font-serif); font-style: italic;

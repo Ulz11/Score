@@ -298,6 +298,11 @@ function escapeHtml(s) {
   return (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function initialOf(name) {
+  const n = (name || '').trim();
+  return n ? n.charAt(0).toUpperCase() : '?';
+}
+
 $('#bellBtn')?.addEventListener('click', async e => {
   e.stopPropagation();
   const panel = $('#notifPanel');
@@ -516,6 +521,9 @@ async function openWidget(tid, member, project) {
   const isSelf = member.id === state.acting;
   const meta = state.taskMeta[tid] || {};
   const actor = state.workers.find(w => w.id === state.acting);
+  const actorName = actor?.name || 'Guest';
+  const actorHandle = actor?.handle || '';
+  const isGuest = !actor;
 
   const root = $('#modalRoot');
   root.innerHTML = `
@@ -526,7 +534,7 @@ async function openWidget(tid, member, project) {
           <div>
             <span class="eyebrow">${isSelf ? 'self · update' : 'peer · comment'}</span>
             <h2 id="modalTitle">${member.name} <em>· ${project.name}</em></h2>
-            <div class="sub" title="${tid}">task ${String(tid || '').slice(0, 8)} · weight ${meta.weight ?? '—'} · acting as ${actor?.name || 'guest'}</div>
+            <div class="sub" title="${tid}">task ${String(tid || '').slice(0, 8)} · weight ${meta.weight ?? '—'}</div>
           </div>
           <button class="btn btn--ghost" id="closeBtn" aria-label="Close">close</button>
         </div>
@@ -541,8 +549,15 @@ async function openWidget(tid, member, project) {
         </div>
 
         <div class="group">
-          <label class="field" for="ideaInput">idea · text</label>
-          <textarea id="ideaInput" placeholder="What's the move? Use @handle to mention."></textarea>
+          <label class="field" for="ideaInput">your idea</label>
+          <div class="posting-as${isGuest ? ' is-guest' : ''}">
+            <div class="avatar">${escapeHtml(initialOf(actorName))}</div>
+            <div>
+              <span class="lbl">posting as</span>
+              <span class="who">${escapeHtml(actorName)}${actorHandle ? `<span class="handle">@${escapeHtml(actorHandle)}</span>` : ''}</span>
+            </div>
+          </div>
+          <textarea id="ideaInput" placeholder="${escapeHtml(actorName)}, share your idea. Use @handle to mention."></textarea>
         </div>
 
         <div class="group row">
@@ -789,38 +804,63 @@ async function loadHistory(tid) {
 }
 
 function renderHistoryItem(item) {
-  const ts = (item.ts || '').replace('T', ' ').slice(0, 19);
+  const ts = (item.ts || '').replace('T', ' ').slice(0, 16);
+  const me = state.session?.worker_id || state.acting;
+
+  // Normalize each kind into a uniform shape.
+  let authorName = '—', authorHandle = '', authorId = null, badge = '', bodyHtml = '';
   if (item.kind === 'comment') {
     const c = item.data;
-    const author = c.author_name || `#${(c.author_id||'').slice(0,8)}`;
-    const handle = c.author_handle ? `@${c.author_handle}` : '';
-    return `<div class="history-item">
-      <div class="meta"><span><span class="badge">comment</span><strong>${author}</strong> ${handle}</span><span>${ts}</span></div>
-      <div class="body">${escapeAndLinkify(c.body)}</div>
-    </div>`;
+    authorName = c.author_name || `#${(c.author_id || '').slice(0, 8)}`;
+    authorHandle = c.author_handle || '';
+    authorId = c.author_id;
+    badge = 'idea';
+    bodyHtml = escapeAndLinkify(c.body);
   } else if (item.kind === 'score') {
     const s = item.data;
-    const scorer = state.workers.find(w => w.id === s.scorer_id);
-    return `<div class="history-item">
-      <div class="meta"><span><span class="badge">peer score</span><strong>${scorer?.name || '#' + (s.scorer_id||'').slice(0,8)}</strong> · ${s.score}/100${s.was_unfinished ? ' · unfinished' : ''}</span><span>${ts}</span></div>
-      ${s.notes ? `<div class="body">${escapeAndLinkify(s.notes)}</div>` : ''}
-    </div>`;
+    const w = state.workers.find(x => x.id === s.scorer_id);
+    authorName = w?.name || `#${(s.scorer_id || '').slice(0, 8)}`;
+    authorHandle = w?.handle || '';
+    authorId = s.scorer_id;
+    badge = 'peer score';
+    const head = `<strong>${s.score}/100</strong>${s.was_unfinished ? ' · unfinished' : ''}`;
+    bodyHtml = `${head}${s.notes ? `<br>${escapeAndLinkify(s.notes)}` : ''}`;
   } else if (item.kind === 'status') {
     const h = item.data;
+    const w = state.workers.find(x => x.id === h.actor_id);
+    authorName = h.actor_name || 'system';
+    authorHandle = w?.handle || '';
+    authorId = h.actor_id;
+    badge = 'status';
     const from = (h.payload?.from || '?').replace(/_/g, ' ');
     const to   = (h.payload?.to   || '?').replace(/_/g, ' ');
-    return `<div class="history-item">
-      <div class="meta"><span><span class="badge">status</span><strong>${h.actor_name}</strong></span><span>${ts}</span></div>
-      <div class="body">${from} → ${to}</div>
-    </div>`;
+    bodyHtml = `${from} → <strong>${to}</strong>`;
   } else if (item.kind === 'recommendation') {
     const r = item.data;
-    return `<div class="history-item">
-      <div class="meta"><span><span class="badge">recommend</span><strong>${r.from_name}</strong> → ${r.to_name}</span><span>${ts}</span></div>
-      <div class="body">${escapeAndLinkify(r.body)}</div>
-    </div>`;
+    const w = state.workers.find(x => x.id === r.from_id);
+    authorName = r.from_name || '—';
+    authorHandle = w?.handle || '';
+    authorId = r.from_id;
+    badge = 'recommend';
+    bodyHtml = escapeAndLinkify(r.body);
+  } else {
+    return '';
   }
-  return '';
+
+  const isMine = me && authorId === me;
+  return `<div class="history-item${isMine ? ' is-mine' : ''}">
+    <div class="avatar${isMine ? ' is-mine' : ''}" title="${escapeHtml(authorName)}">${escapeHtml(initialOf(authorName))}</div>
+    <div class="hi-content">
+      <div class="hi-head">
+        <div>
+          <span class="hi-name">${escapeHtml(authorName)}</span>${isMine ? '<span class="you-pill">you</span>' : ''}${authorHandle ? `<span class="hi-handle">@${escapeHtml(authorHandle)}</span>` : ''}
+        </div>
+        <div class="hi-when">${ts}</div>
+      </div>
+      <div class="hi-tag"><span class="badge">${badge}</span></div>
+      <div class="body">${bodyHtml}</div>
+    </div>
+  </div>`;
 }
 
 function escapeAndLinkify(s) {
